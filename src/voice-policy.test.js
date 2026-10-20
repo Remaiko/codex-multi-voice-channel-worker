@@ -1,0 +1,9 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {voicePolicy,canListen,canBroadcast,parseVoiceCommand,describeVoiceResult} from './voice-policy.js';
+const sid='123456789012345678';
+test('voice recognition fails closed by default',()=>{const p=voicePolicy({authorized_user_ids:[sid]},'1');assert.equal(canListen(p,sid),false);assert.equal(canBroadcast(p,[sid]),false)});
+test('listening requires opt in and active route',()=>{const p=voicePolicy({voice_listen_enabled:true,authorized_user_ids:[sid],authorized_listener_ids:[sid]},'1');assert.equal(canListen(p,sid),true);assert.equal(canListen(p,'234567890123456789'),false);assert.equal(canBroadcast(p,[sid]),true);assert.equal(canBroadcast(p,[sid,'234567890123456789']),false)});
+test('malformed ids cannot qualify for radio access',()=>{const p=voicePolicy({voice_listen_enabled:true,authorized_user_ids:['bad',sid],authorized_listener_ids:['bad']},'1');assert.equal(canListen(p,'bad'),false);assert.equal(canBroadcast(p,['bad']),false)});
+test('wake word must match a word, not a prefix',()=>{assert.equal(parseVoiceCommand('dispatchment radio check'),null);assert.deepEqual(parseVoiceCommand('Dispatch, radio check'),{action:'radio_check'});assert.deepEqual(parseVoiceCommand('dispatch incident #1524'),{action:'call',id:'1524'});assert.deepEqual(parseVoiceCommand('dispatch open calls'),{action:'calls'});assert.deepEqual(parseVoiceCommand('dispatch available units'),{action:'units'});assert.deepEqual(parseVoiceCommand('dispatch my status'),{action:'status'});assert.equal(parseVoiceCommand('what did you say'),null)});
+test('CAD responses include bounded, speakable details',()=>{assert.match(describeVoiceResult({action:'call'},{id:'123',call_type:'Fire',priority:'1',location:'Postal 123',status:'New'}),/Postal 123/);assert.match(describeVoiceResult({action:'calls'},[]),/no active calls/);assert.match(describeVoiceResult({action:'status'},{on_duty:false}),/off duty/)});
