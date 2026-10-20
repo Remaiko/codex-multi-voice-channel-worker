@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: midnight-cad-voice-worker
+    runtime: docker
+    plan: 0.5c-512mb
+    numInstances: 1
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: VOICE_WORKER_KEY
+        sync: false
+      - key: VOICE_CONTROL_URL
+        value: https://midnight-cad-discord-test.vercel.app/api/voice
+      - key: VOICE_NAME
+        value: en-us+f3
+      - key: VOICE_SPEED
+        value: "155"
+      - key: VOICE_INPUT_ENABLED
+        value: "false"
+      - key: VOICE_COMMANDS_ENABLED
+        value: "false"
