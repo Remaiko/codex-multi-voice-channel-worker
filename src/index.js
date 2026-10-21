@@ -8,6 +8,7 @@ import {Client,GatewayIntentBits,ChannelType} from 'discord.js';
 import {AudioPlayerStatus,NoSubscriberBehavior,StreamType,EndBehaviorType,createAudioPlayer,createAudioResource,joinVoiceChannel,entersState,VoiceConnectionStatus} from '@discordjs/voice';
 import {voicePolicy,canListen,canBroadcast,parseVoiceCommand,describeVoiceResult} from './voice-policy.js';
 import {flattenVoiceRoutes,voiceRouteKey} from './voice-routes.js';
+import {synthesizeElevenLabs} from './elevenlabs.js';
 
 const token=process.env.DISCORD_BOT_TOKEN;
 const workerKey=process.env.VOICE_WORKER_KEY||'';
@@ -44,7 +45,7 @@ async function voiceFor(guildId,channelId){
  const me=await guild.members.fetchMe();const permissions=channel.permissionsFor(me);if(!permissions?.has(['Connect','Speak']))throw Error('The bot needs Connect and Speak in the configured voice channel.');
  const key=voiceRouteKey(guildId,channelId);
  let state=connections.get(key);
- if(!state){const player=createAudioPlayer({behaviors:{noSubscriber:NoSubscriberBehavior.Stop}});const connection=joinVoiceChannel({guildId,channelId,group:channelId,adapterCreator:guild.voiceAdapterCreator,selfDeaf:!inputEnabled,selfMute:false});connection.subscribe(player);state={connection,player,channelId,guildId,tail:Promise.resolve()};connections.set(key,state);if(inputEnabled)setupReceiver(guildId,state);connection.on(VoiceConnectionStatus.Disconnected,()=>{if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});}
+ if(!state){const player=createAudioPlayer({behaviors:{noSubscriber:NoSubscriberBehavior.Stop}});const connection=joinVoiceChannel({guildId,channelId,group:channelId,adapterCreator:guild.voiceAdapterCreator,selfDeaf:!inputEnabled,selfMute:false});connection.subscribe(player);state={connection,player,channelId,guildId,tail:Promise.resolve()};connections.set(key,state);if(inputEnabled)setupReceiver(guildId,state);connection.on('error',error=>{console.error('Discord voice connection error',key,String(error?.message||error).slice(0,160));if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});connection.on(VoiceConnectionStatus.Disconnected,()=>{if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});}
  await entersState(state.connection,VoiceConnectionStatus.Ready,15_000);return state;
 }
 async function play(req){
@@ -73,7 +74,15 @@ async function play(req){
  return {played:true,guildId,agencyCode};
 }
 
-function say(text){return new Promise((resolve,reject)=>{const child=spawn('espeak-ng',['-v',process.env.VOICE_NAME||'en-us+f3','-s',process.env.VOICE_SPEED||'155','--stdout',text],{stdio:['ignore','pipe','ignore']});const chunks=[];let size=0;child.stdout.on('data',b=>{size+=b.length;if(size>2*1024*1024){child.kill();reject(Error('Synthesized voice message is too large.'));}else chunks.push(b);});child.once('error',reject);child.once('close',code=>code===0?resolve(Buffer.concat(chunks)):reject(Error('Speech synthesis failed.')));});}
+function localSpeech(text){return new Promise((resolve,reject)=>{const child=spawn('espeak-ng',['-v',process.env.VOICE_NAME||'en-us+f3','-s',process.env.VOICE_SPEED||'155','--stdout',text],{stdio:['ignore','pipe','ignore']});const chunks=[];let size=0;child.stdout.on('data',b=>{size+=b.length;if(size>2*1024*1024){child.kill();reject(Error('Synthesized voice message is too large.'));}else chunks.push(b);});child.once('error',reject);child.once('close',code=>code===0?resolve(Buffer.concat(chunks)):reject(Error('Speech synthesis failed.')));});}
+async function say(text){
+ const apiKey=process.env.ELEVENLABS_API_KEY;
+ if(apiKey){
+  try{return await synthesizeElevenLabs({text,apiKey,voiceId:process.env.ELEVENLABS_VOICE_ID||'21m00Tcm4TlvDq8ikWAM',modelId:process.env.ELEVENLABS_MODEL_ID||'eleven_multilingual_v2'});}
+  catch(e){console.error('ElevenLabs TTS failed; using local voice.',String(e.message||e).slice(0,120));}
+ }
+ return localSpeech(text);
+}
 function makeSpeech(delivery){const p=delivery.payload||{},t=delivery.templates||{},kind=['new','update','duress','amber'].includes(delivery.kind)?delivery.kind:'update';const defaults={new:'Units needed: {call_type}. Priority {priority}. {location}, postal {postal}. {details}. Call {call_id}.',update:'Units attached to {call_type} at {location}. Updated information: {details}. Status {status}.',duress:'Duress alert. {call_type}. {location}, postal {postal}. {details}. Call {call_id}.',amber:'Amber alert. {call_type}. {location}, postal {postal}. {details}. Call {call_id}.'};const values={call_id:delivery.call_id||delivery.event_id||'',call_type:p.call_type||'incident',priority:p.priority||'unassigned',location:p.location||'',postal:p.postal||'unknown',status:p.status||'',details:p.narrative||p.details||'',agency:delivery.agency_code||''};const expand=template=>String(template||'').replace(/\{([a-z_]+)\}/gi,(_,key)=>values[key.toLowerCase()]||'').replace(/\s+([.,!?])/g,'$1').replace(/(?:\s*\.\s*){2,}/g,'. ').trim();const prefix=Object.hasOwn(t,'prefix')?t.prefix:'Dispatch, attention units',eventText=Object.hasOwn(t,kind)?t[kind]:defaults[kind],suffix=Object.hasOwn(t,'suffix')?t.suffix:'';const pieces=[expand(prefix),expand(eventText),expand(suffix)].filter(Boolean);return pieces.join('. ').replace(/(?:\s*\.\s*){2,}/g,'. ').slice(0,850);}
 async function control(action,extra={}){const response=await fetch(action==='routes'?voiceRouteUrl:controlUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action,...extra}),signal:AbortSignal.timeout(20_000)});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'Voice control endpoint failed.');return data;}
 async function syncRoutes(){try{const response=await fetch(voiceRouteUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action:'routes'}),signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error('Voice routes endpoint rejected request ('+response.status+')');const data=await response.json();if(!Array.isArray(data.routes))throw Error('Invalid routes payload');const wanted=new Map(flattenVoiceRoutes(data.routes).map(r=>[voiceRouteKey(String(r.guild_id),r.voice_channel_id),r]));for(const [key,state] of connections){if(!wanted.has(key)){state.connection.destroy();connections.delete(key);}}routes.clear();for(const [key,r] of wanted)routes.set(key,r);for(const [key,r] of routes){try{await voiceFor(String(r.guild_id),r.voice_channel_id);}catch(e){console.error('Voice route unavailable',key,String(e.message||e));}}}catch(e){console.error('Voice route sync failed',String(e.message||e));}}
