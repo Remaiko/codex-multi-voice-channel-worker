@@ -8,6 +8,7 @@ import {Client,GatewayIntentBits,ChannelType} from 'discord.js';
 import {AudioPlayerStatus,NoSubscriberBehavior,StreamType,EndBehaviorType,createAudioPlayer,createAudioResource,joinVoiceChannel,entersState,VoiceConnectionStatus} from '@discordjs/voice';
 import {voicePolicy,canListen,canBroadcast,parseVoiceCommand,describeVoiceResult} from './voice-policy.js';
 import {flattenVoiceRoutes,voiceRouteKey} from './voice-routes.js';
+import {playToAudience} from './authorized-playback.js';
 import {createGuildQueue,idleRoutes} from './guild-queue.js';
 import {synthesizeElevenLabs} from './elevenlabs.js';
 
@@ -68,15 +69,7 @@ async function playDelivery(req){
  const listeners=[...voiceChannel.members.values()].filter(member=>!member.user.bot);
  if(listeners.length===0)throw Error('No opted-in responders are present in the voice channel.');
  if(listeners.some(member=>!authorized.has(member.id)))throw Error('Voice dispatch paused: an unauthorized listener is in the channel.');
- state.tail=state.tail.catch(()=>{}).then(()=>new Promise((resolve,reject)=>{
-  const onIdle=()=>{cleanup();resolve();},onError=e=>{cleanup();reject(e);};
-  let timer;const checkAudience=()=>{const members=[...voiceChannel.members.values()].filter(m=>!m.user.bot).map(m=>m.id);if(!canBroadcast({listeners:authorized},members)){cleanup();state.player.stop(true);reject(Error('Voice audience authorization changed.'));}};
-  function cleanup(){clearTimeout(timer);client.off('voiceStateUpdate',onVoiceState);state.player.off(AudioPlayerStatus.Idle,onIdle);state.player.off('error',onError);}
-  const onVoiceState=(oldState,newState)=>{if(newState.guild.id===guildId&&(oldState.channelId===voiceChannelId||newState.channelId===voiceChannelId))checkAudience();};
-  client.on('voiceStateUpdate',onVoiceState);timer=setTimeout(()=>{cleanup();state.player.stop(true);reject(Error('Voice playback timed out.'));},90000);
-  state.player.once(AudioPlayerStatus.Idle,onIdle);state.player.once('error',onError);
-  state.player.play(createAudioResource(Readable.from(audio),{inputType:StreamType.Arbitrary}));
- }));
+ state.tail=state.tail.catch(()=>{}).then(()=>playToAudience({player:state.player,gateway:client,channel:voiceChannel,resource:createAudioResource(Readable.from(audio),{inputType:StreamType.Arbitrary}),guildId,channelId:voiceChannelId,authorized,idleEvent:AudioPlayerStatus.Idle}));
  await state.tail;recent.set(key,Date.now());for(const [k,t] of recent)if(Date.now()-t>15*60_000)recent.delete(k);
  return {played:true,guildId,agencyCode};
 }
