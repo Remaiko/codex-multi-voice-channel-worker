@@ -25,6 +25,8 @@ services:
       - key: ELEVENLABS_MODEL_ID
         value: eleven_multilingual_v2
       - key: VOICE_INPUT_ENABLED
-        value: "false"
+        value: "true"
       - key: VOICE_COMMANDS_ENABLED
-        value: "false"
+        value: "true"
+
+
