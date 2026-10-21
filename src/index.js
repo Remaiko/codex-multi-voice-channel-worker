@@ -14,6 +14,7 @@ import {createGuildQueue,idleRoutes} from './guild-queue.js';
 import {botCredentials,selectVoiceBot,companionConfiguration} from './bot-pool.js';
 import {synthesizeElevenLabs} from './elevenlabs.js';
 import {fleetInput,fleetReport,reconnectFleetBot} from './fleet-control.js';
+import {ensureConnectionReady} from './connection-ready.js';
 
 const token=process.env.DISCORD_BOT_TOKEN;
 const workerKey=process.env.VOICE_WORKER_KEY||'';
@@ -59,7 +60,7 @@ async function voiceFor(guildId,channelId){
  const key=voiceRouteKey(guildId,channelId);
  let state=connections.get(key);if(state&&state.botKey!==bot.key){connections.delete(key);state.connection.destroy();state=null;}
  if(!state){for(const [otherKey,other] of connections){if(other.guildId===guildId&&other.botKey===bot.key&&other.channelId!==channelId){connections.delete(otherKey);other.connection.destroy();}}const player=createAudioPlayer({behaviors:{noSubscriber:NoSubscriberBehavior.Stop}});const connection=joinVoiceChannel({guildId,channelId,group:bot.key,adapterCreator:guild.voiceAdapterCreator,selfDeaf:!inputEnabled,selfMute:false});connection.subscribe(player);state={connection,player,channelId,guildId,botKey:bot.key,gateway:bot.client,tail:Promise.resolve()};connections.set(key,state);if(inputEnabled)setupReceiver(guildId,state);connection.on('error',error=>{console.error('Discord voice connection error',key,String(error?.message||error).slice(0,160));if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});connection.on(VoiceConnectionStatus.Disconnected,()=>{if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});}
- await entersState(state.connection,VoiceConnectionStatus.Ready,15_000);return state;
+ return ensureConnectionReady({connections,key,state,readyStatus:VoiceConnectionStatus.Ready,wait:()=>entersState(state.connection,VoiceConnectionStatus.Ready,15_000)});
 }
 function play(req){const scope=queueKey(req.guildId,req.voiceChannelId);return inGuild(scope,()=>{if(queueKey(req.guildId,req.voiceChannelId)!==scope)throw Error('Voice route changed; retry delivery.');return playDelivery(req);});}
 async function playDelivery(req){
@@ -179,7 +180,7 @@ function setupReceiver(guildId,state){
 for(const bot of bots){bot.client.once('ready',()=>{console.log(JSON.stringify({service:'midnight-cad-voice-worker',ready:true,identity:bot.key}));void syncRoutes();});bot.client.on('error',()=>console.error('Discord gateway connection error',bot.key));}
 
 const server=http.createServer(async(req,res)=>{
- if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.1',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechProvider:speechConfig.provider,speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
+ if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.2',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechProvider:speechConfig.provider,speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
  if(!['/v1/dispatch','/v1/fleet'].includes(req.url)||req.method!=='POST')return respond(res,404,{error:'Not found'});
  if(!authorized(req))return respond(res,401,{error:'Unauthorized'});
  if(req.url==='/v1/fleet'){
