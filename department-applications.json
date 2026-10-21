@@ -1,0 +1,38 @@
+{
+  "guild_id": "910947550650060800",
+  "permission_integer": "3146752",
+  "scope": "bot",
+  "applications": [
+    {
+      "department": "FIRE_EMS",
+      "id": "1562560263033716847",
+      "name": "Midnight CAD Fire EMS Dispatch",
+      "token_environment_variable": "VOICE_BOT_TOKEN_FIRE_EMS"
+    },
+    {
+      "department": "BCSO",
+      "id": "1562560881160888513",
+      "name": "Midnight CAD BCSO Dispatch",
+      "token_environment_variable": "VOICE_BOT_TOKEN_BCSO"
+    },
+    {
+      "department": "SASP",
+      "id": "1562561216541499492",
+      "name": "Midnight CAD SASP Dispatch",
+      "token_environment_variable": "VOICE_BOT_TOKEN_SASP"
+    },
+    {
+      "department": "LSPD",
+      "id": "1562562413893656616",
+      "name": "Midnight CAD LSPD Dispatch",
+      "token_environment_variable": "VOICE_BOT_TOKEN_LSPD"
+    },
+    {
+      "department": "FEDERAL",
+      "id": "1562562500501971015",
+      "name": "Midnight CAD Federal Dispatch",
+      "token_environment_variable": "VOICE_BOT_TOKEN_FEDERAL"
+    }
+  ]
+}
+
