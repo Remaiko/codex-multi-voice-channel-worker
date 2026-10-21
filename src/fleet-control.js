@@ -5,7 +5,7 @@ const labels={main:'Main CAD bot',FIRE_EMS:'Fire & EMS',BCSO:'BCSO',SASP:'SASP',
 export function fleetInput(input){
  if(!input||!id.test(String(input.guild_id||'')))throw Error('Choose a valid server.');
  if(!['status','reconnect'].includes(input.action))throw Error('Unsupported fleet action.');
- if(input.action==='reconnect'&&!companions.includes(input.bot_key))throw Error('Choose a department bot.');
+ if(input.action==='reconnect'&&!['main',...companions].includes(input.bot_key))throw Error('Choose a dispatch bot.');
  return {guildId:String(input.guild_id),action:input.action,botKey:input.bot_key};
 }
 export function fleetReport({guildId,bots,routes,connections,speechReady=false}){
