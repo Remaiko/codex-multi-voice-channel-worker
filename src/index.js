@@ -8,6 +8,7 @@ import {Client,GatewayIntentBits,ChannelType} from 'discord.js';
 import {AudioPlayerStatus,NoSubscriberBehavior,StreamType,EndBehaviorType,createAudioPlayer,createAudioResource,joinVoiceChannel,entersState,VoiceConnectionStatus} from '@discordjs/voice';
 import {voicePolicy,canListen,canBroadcast,parseVoiceCommand,describeVoiceResult} from './voice-policy.js';
 import {flattenVoiceRoutes,voiceRouteKey} from './voice-routes.js';
+import {recognitionConfig,transcribeAudio} from './speech-recognition.js';
 import {playToAudience} from './authorized-playback.js';
 import {createGuildQueue,idleRoutes} from './guild-queue.js';
 import {synthesizeElevenLabs} from './elevenlabs.js';
@@ -36,7 +37,9 @@ const receiving=new Set();
 const cooldowns=new Map();
 const recentSpeech=new Map();
 let lastRouteSyncAt=0,lastEventPollAt=0;
-const inputEnabled=process.env.VOICE_INPUT_ENABLED==='true' && Boolean(process.env.OPENAI_API_KEY);
+const speechConfig=recognitionConfig(process.env);
+const inputEnabled=process.env.VOICE_INPUT_ENABLED==='true' && Boolean(speechConfig.apiKey);
+let speechSelfTest=inputEnabled?'pending':'disabled';
 const wakePhrase=(process.env.VOICE_WAKE_PHRASE||'dispatch').toLowerCase();
 
 function respond(res,status,value){res.writeHead(status,{'content-type':'application/json','cache-control':'no-store'});res.end(JSON.stringify(value));}
@@ -103,16 +106,7 @@ function wavFromPcm(pcm){
  header.write('data',36);header.writeUInt32LE(pcm.length,40);
  return Buffer.concat([header,pcm]);
 }
-async function transcribe(pcm){
- const body=new FormData();body.set('model',process.env.VOICE_STT_MODEL||'gpt-4o-mini-transcribe');
- body.set('file',new Blob([wavFromPcm(pcm)],{type:'audio/wav'}),'radio.wav');
- const r=await fetch('https://api.openai.com/v1/audio/transcriptions',{
-  method:'POST',headers:{Authorization:'Bearer '+process.env.OPENAI_API_KEY},body,
-  signal:AbortSignal.timeout(25000)
- });
- if(!r.ok)throw Error('Speech recognition unavailable ('+r.status+')');
- const data=await r.json();return String(data.text||'').slice(0,500).trim();
-}
+async function transcribe(pcm){return transcribeAudio({audio:wavFromPcm(pcm),config:speechConfig});}
 async function replyInGuild(guildId,channelId,userId,message){
  const state=connections.get(voiceRouteKey(guildId,channelId));
  if(!state)return;
@@ -152,6 +146,7 @@ function setupReceiver(guildId,state){
  const receiver=state.connection.receiver;
  if(!receiver)return;
  receiver.speaking.on('start',async(userId)=>{
+  if(speechSelfTest!=='passed')return;
   const routeKey=voiceRouteKey(guildId,state.channelId);
   const key=routeKey+':'+userId;
   if(receiving.has(key)||!canListen(voicePolicy(routes.get(routeKey),guildId),userId))return;
@@ -178,13 +173,14 @@ function setupReceiver(guildId,state){
 client.once('ready',()=>{console.log(JSON.stringify({service:'midnight-cad-voice-worker',ready:true,bot:client.user.username}));void syncRoutes();});
 client.on('error',()=>console.error('Discord gateway connection error'));
 const server=http.createServer(async(req,res)=>{
- if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.4.0',routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechRecognitionCredentialConfigured:Boolean(process.env.OPENAI_API_KEY),voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
+ if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.4.1',routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechProvider:speechConfig.provider,speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
  if(req.url!=='/v1/dispatch'||req.method!=='POST')return respond(res,404,{error:'Not found'});
  if(!authorized(req))return respond(res,401,{error:'Unauthorized'});
  try{return respond(res,200,await play(await readJson(req)));}catch(e){return respond(res,400,{error:String(e.message||'Voice dispatch failed').slice(0,180)});}
 });
 server.listen(port,'0.0.0.0');
 await client.login(token);
+if(inputEnabled){void(async()=>{try{const text=await transcribeAudio({audio:await localSpeech(wakePhrase+', radio check.'),config:speechConfig});if(parseVoiceCommand(text,wakePhrase)?.action!=='radio_check')throw Error('Synthetic command was not recognized.');speechSelfTest='passed';console.log(JSON.stringify({speechSelfTest:'passed',provider:speechConfig.provider}));}catch(error){speechSelfTest='failed';console.error('Synthetic speech check failed:',String(error.message||error).slice(0,140));}})();}
 void (async()=>{while(true){await delay(5_000);await deliver();}})();
 setInterval(()=>void syncRoutes(),30_000).unref();
 
