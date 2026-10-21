@@ -13,6 +13,7 @@ import {playToAudience} from './authorized-playback.js';
 import {createGuildQueue,idleRoutes} from './guild-queue.js';
 import {botCredentials,selectVoiceBot,companionConfiguration} from './bot-pool.js';
 import {synthesizeElevenLabs} from './elevenlabs.js';
+import {fleetInput,fleetReport,reconnectFleetBot} from './fleet-control.js';
 
 const token=process.env.DISCORD_BOT_TOKEN;
 const workerKey=process.env.VOICE_WORKER_KEY||'';
@@ -178,9 +179,15 @@ function setupReceiver(guildId,state){
 for(const bot of bots){bot.client.once('ready',()=>{console.log(JSON.stringify({service:'midnight-cad-voice-worker',ready:true,identity:bot.key}));void syncRoutes();});bot.client.on('error',()=>console.error('Discord gateway connection error',bot.key));}
 
 const server=http.createServer(async(req,res)=>{
- if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.5.0',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechProvider:speechConfig.provider,speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
- if(req.url!=='/v1/dispatch'||req.method!=='POST')return respond(res,404,{error:'Not found'});
+ if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.0',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechProvider:speechConfig.provider,speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
+ if(!['/v1/dispatch','/v1/fleet'].includes(req.url)||req.method!=='POST')return respond(res,404,{error:'Not found'});
  if(!authorized(req))return respond(res,401,{error:'Unauthorized'});
+ if(req.url==='/v1/fleet'){
+  try{const input=await readJson(req),{guildId}=fleetInput(input);if(!client.guilds.cache.has(guildId))return respond(res,404,{error:'Main CAD bot is not installed in this server.'});
+   if(input.action==='reconnect')await reconnectFleetBot({input,bots,routes,connections,inGuild,syncRoutes,voiceFor});
+   return respond(res,200,fleetReport({guildId,bots,routes,connections,speechReady:speechSelfTest==='passed'}));
+  }catch(e){return respond(res,400,{error:String(e.message||'Fleet control failed').slice(0,180)});}
+ }
  try{return respond(res,200,await play(await readJson(req)));}catch(e){return respond(res,400,{error:String(e.message||'Voice dispatch failed').slice(0,180)});}
 });
 server.listen(port,'0.0.0.0');

@@ -47,6 +47,10 @@ Configure each selected channel in the dashboard and grant the bot `View Channel
 
 ## Verify locally
 
+## Shared fleet dashboard
+
+Version 0.6 exposes `POST /v1/fleet` only with the existing private worker Bearer key. The CAD bot dashboard verifies Discord Manage Server permission before requesting a server-scoped status or reconnect. Responses contain bot readiness, installation, department routes and connection states; they omit credentials and responder allowlists. A reconnect waits on the identity queue, leaving other departments untouched. Pausing and assigning channels use the dashboard's atomic database save rather than temporary worker state. No test audio is broadcast by these controls.
+
 Run `npm test`. The unit suite covers route expansion, legacy single-channel routes, authorization policies, and spoken command parsing. A live Discord test is still required to verify bot permissions, gateway voice behavior, and audio playback.
 
 
