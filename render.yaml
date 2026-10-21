@@ -18,6 +18,12 @@ services:
         value: en-us+f3
       - key: VOICE_SPEED
         value: "155"
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: ELEVENLABS_VOICE_ID
+        value: "21m00Tcm4TlvDq8ikWAM"
+      - key: ELEVENLABS_MODEL_ID
+        value: eleven_multilingual_v2
       - key: VOICE_INPUT_ENABLED
         value: "false"
       - key: VOICE_COMMANDS_ENABLED
