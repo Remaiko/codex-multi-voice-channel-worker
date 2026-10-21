@@ -8,6 +8,7 @@ import {Client,GatewayIntentBits,ChannelType} from 'discord.js';
 import {AudioPlayerStatus,NoSubscriberBehavior,StreamType,EndBehaviorType,createAudioPlayer,createAudioResource,joinVoiceChannel,entersState,VoiceConnectionStatus} from '@discordjs/voice';
 import {voicePolicy,canListen,canBroadcast,parseVoiceCommand,describeVoiceResult} from './voice-policy.js';
 import {flattenVoiceRoutes,voiceRouteKey} from './voice-routes.js';
+import {createGuildQueue,idleRoutes} from './guild-queue.js';
 import {synthesizeElevenLabs} from './elevenlabs.js';
 
 const token=process.env.DISCORD_BOT_TOKEN;
@@ -26,12 +27,14 @@ const cadCommandUrl=process.env.VOICE_COMMANDS_ENABLED==='true'?voiceCommandUrl:
 const routes=new Map();
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildVoiceStates]});
 const connections=new Map();
+const inGuild=createGuildQueue();
 const recent=new Map();
 const recentReplies=new Map();
 const lastAnnouncements=new Map();
 const receiving=new Set();
 const cooldowns=new Map();
 const recentSpeech=new Map();
+let lastRouteSyncAt=0,lastEventPollAt=0;
 const inputEnabled=process.env.VOICE_INPUT_ENABLED==='true' && Boolean(process.env.OPENAI_API_KEY);
 const wakePhrase=(process.env.VOICE_WAKE_PHRASE||'dispatch').toLowerCase();
 
@@ -45,10 +48,11 @@ async function voiceFor(guildId,channelId){
  const me=await guild.members.fetchMe();const permissions=channel.permissionsFor(me);if(!permissions?.has(['Connect','Speak']))throw Error('The bot needs Connect and Speak in the configured voice channel.');
  const key=voiceRouteKey(guildId,channelId);
  let state=connections.get(key);
- if(!state){const player=createAudioPlayer({behaviors:{noSubscriber:NoSubscriberBehavior.Stop}});const connection=joinVoiceChannel({guildId,channelId,group:channelId,adapterCreator:guild.voiceAdapterCreator,selfDeaf:!inputEnabled,selfMute:false});connection.subscribe(player);state={connection,player,channelId,guildId,tail:Promise.resolve()};connections.set(key,state);if(inputEnabled)setupReceiver(guildId,state);connection.on('error',error=>{console.error('Discord voice connection error',key,String(error?.message||error).slice(0,160));if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});connection.on(VoiceConnectionStatus.Disconnected,()=>{if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});}
+ if(!state){for(const [otherKey,other] of connections){if(other.guildId===guildId&&other.channelId!==channelId){connections.delete(otherKey);other.connection.destroy();}}const player=createAudioPlayer({behaviors:{noSubscriber:NoSubscriberBehavior.Stop}});const connection=joinVoiceChannel({guildId,channelId,adapterCreator:guild.voiceAdapterCreator,selfDeaf:!inputEnabled,selfMute:false});connection.subscribe(player);state={connection,player,channelId,guildId,tail:Promise.resolve()};connections.set(key,state);if(inputEnabled)setupReceiver(guildId,state);connection.on('error',error=>{console.error('Discord voice connection error',key,String(error?.message||error).slice(0,160));if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});connection.on(VoiceConnectionStatus.Disconnected,()=>{if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});}
  await entersState(state.connection,VoiceConnectionStatus.Ready,15_000);return state;
 }
-async function play(req){
+function play(req){return inGuild(req.guildId,()=>playDelivery(req));}
+async function playDelivery(req){
  const {guildId,agencyCode,eventId,voiceChannelId,audioBase64,authorizedUserIds}=req;
  if(!/^\d{15,22}$/.test(guildId||'')||!/^\d{15,22}$/.test(String(eventId||'')))throw Error('Invalid dispatch identifiers.');
  if(!/^[A-Z0-9_-]{1,20}$/.test(agencyCode||''))throw Error('Invalid agency code.');
@@ -66,7 +70,10 @@ async function play(req){
  if(listeners.some(member=>!authorized.has(member.id)))throw Error('Voice dispatch paused: an unauthorized listener is in the channel.');
  state.tail=state.tail.catch(()=>{}).then(()=>new Promise((resolve,reject)=>{
   const onIdle=()=>{cleanup();resolve();},onError=e=>{cleanup();reject(e);};
-  function cleanup(){state.player.off(AudioPlayerStatus.Idle,onIdle);state.player.off('error',onError);}
+  let timer;const checkAudience=()=>{const members=[...voiceChannel.members.values()].filter(m=>!m.user.bot).map(m=>m.id);if(!canBroadcast({listeners:authorized},members)){cleanup();state.player.stop(true);reject(Error('Voice audience authorization changed.'));}};
+  function cleanup(){clearTimeout(timer);client.off('voiceStateUpdate',onVoiceState);state.player.off(AudioPlayerStatus.Idle,onIdle);state.player.off('error',onError);}
+  const onVoiceState=(oldState,newState)=>{if(newState.guild.id===guildId&&(oldState.channelId===voiceChannelId||newState.channelId===voiceChannelId))checkAudience();};
+  client.on('voiceStateUpdate',onVoiceState);timer=setTimeout(()=>{cleanup();state.player.stop(true);reject(Error('Voice playback timed out.'));},90000);
   state.player.once(AudioPlayerStatus.Idle,onIdle);state.player.once('error',onError);
   state.player.play(createAudioResource(Readable.from(audio),{inputType:StreamType.Arbitrary}));
  }));
@@ -85,8 +92,8 @@ async function say(text){
 }
 function makeSpeech(delivery){const p=delivery.payload||{},t=delivery.templates||{},kind=['new','update','duress','amber'].includes(delivery.kind)?delivery.kind:'update';const defaults={new:'Units needed: {call_type}. Priority {priority}. {location}, postal {postal}. {details}. Call {call_id}.',update:'Units attached to {call_type} at {location}. Updated information: {details}. Status {status}.',duress:'Duress alert. {call_type}. {location}, postal {postal}. {details}. Call {call_id}.',amber:'Amber alert. {call_type}. {location}, postal {postal}. {details}. Call {call_id}.'};const values={call_id:delivery.call_id||delivery.event_id||'',call_type:p.call_type||'incident',priority:p.priority||'unassigned',location:p.location||'',postal:p.postal||'unknown',status:p.status||'',details:p.narrative||p.details||'',agency:delivery.agency_code||''};const expand=template=>String(template||'').replace(/\{([a-z_]+)\}/gi,(_,key)=>values[key.toLowerCase()]||'').replace(/\s+([.,!?])/g,'$1').replace(/(?:\s*\.\s*){2,}/g,'. ').trim();const prefix=Object.hasOwn(t,'prefix')?t.prefix:'Dispatch, attention units',eventText=Object.hasOwn(t,kind)?t[kind]:defaults[kind],suffix=Object.hasOwn(t,'suffix')?t.suffix:'';const pieces=[expand(prefix),expand(eventText),expand(suffix)].filter(Boolean);return pieces.join('. ').replace(/(?:\s*\.\s*){2,}/g,'. ').slice(0,850);}
 async function control(action,extra={}){const response=await fetch(action==='routes'?voiceRouteUrl:controlUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action,...extra}),signal:AbortSignal.timeout(20_000)});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'Voice control endpoint failed.');return data;}
-async function syncRoutes(){try{const response=await fetch(voiceRouteUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action:'routes'}),signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error('Voice routes endpoint rejected request ('+response.status+')');const data=await response.json();if(!Array.isArray(data.routes))throw Error('Invalid routes payload');const wanted=new Map(flattenVoiceRoutes(data.routes).map(r=>[voiceRouteKey(String(r.guild_id),r.voice_channel_id),r]));for(const [key,state] of connections){if(!wanted.has(key)){state.connection.destroy();connections.delete(key);}}routes.clear();for(const [key,r] of wanted)routes.set(key,r);for(const [key,r] of routes){try{await voiceFor(String(r.guild_id),r.voice_channel_id);}catch(e){console.error('Voice route unavailable',key,String(e.message||e));}}}catch(e){console.error('Voice route sync failed',String(e.message||e));}}
-async function deliver(){try{const {deliveries=[]}=await control('claim');await Promise.all(deliveries.map(async d=>{try{const speech=makeSpeech(d),audio=await say(speech);await play({guildId:d.guild_id,agencyCode:d.agency_code,eventId:d.event_id,voiceChannelId:d.voice_channel_id,authorizedUserIds:d.authorized_user_ids,audioBase64:audio.toString('base64')});lastAnnouncements.set(voiceRouteKey(String(d.guild_id),String(d.voice_channel_id)),speech);await control('ack',{id:d.id,ok:true});}catch(e){await control('ack',{id:d.id,ok:false,error:String(e.message||'voice_failed').slice(0,80),retry_seconds:60}).catch(()=>{});console.error('Voice dispatch failed',String(d.id),String(e.message||e));}}));}catch(e){console.error('Voice event poll failed',String(e.message||e));}}
+async function syncRoutes(){try{const response=await fetch(voiceRouteUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action:'routes'}),signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error('Voice routes endpoint rejected request ('+response.status+')');const data=await response.json();if(!Array.isArray(data.routes))throw Error('Invalid routes payload');const wanted=new Map(flattenVoiceRoutes(data.routes).map(r=>[voiceRouteKey(String(r.guild_id),r.voice_channel_id),r]));for(const [key,state] of connections){if(!wanted.has(key)){state.connection.destroy();connections.delete(key);}}routes.clear();for(const [key,r] of wanted)routes.set(key,r);lastRouteSyncAt=Date.now();for(const r of idleRoutes([...routes.values()],[...connections.values()])){try{await inGuild(r.guild_id,()=>{const chosen=idleRoutes([...routes.values()],[...connections.values()]).find(x=>String(x.guild_id)===String(r.guild_id));return chosen?voiceFor(String(chosen.guild_id),chosen.voice_channel_id):undefined;});}catch(e){console.error('Voice route unavailable',voiceRouteKey(r.guild_id,r.voice_channel_id),String(e.message||e));}}}catch(e){console.error('Voice route sync failed',String(e.message||e));}}
+async function deliver(){try{const {deliveries=[]}=await control('claim');lastEventPollAt=Date.now();await Promise.all(deliveries.map(async d=>{try{const speech=makeSpeech(d),audio=await say(speech);await play({guildId:d.guild_id,agencyCode:d.agency_code,eventId:d.event_id,voiceChannelId:d.voice_channel_id,authorizedUserIds:d.authorized_user_ids,audioBase64:audio.toString('base64')});lastAnnouncements.set(voiceRouteKey(String(d.guild_id),String(d.voice_channel_id)),speech);await control('ack',{id:d.id,ok:true});}catch(e){await control('ack',{id:d.id,ok:false,error:String(e.message||'voice_failed').slice(0,80),retry_seconds:60}).catch(()=>{});console.error('Voice dispatch failed',String(d.id),String(e.message||e));}}));}catch(e){console.error('Voice event poll failed',String(e.message||e));}}
 
 
 // v43.30 optional receive pipeline. Explicit opt-in must be recorded by the CAD route
@@ -167,7 +174,7 @@ function setupReceiver(guildId,state){
    for await(const part of decoder){
     size+=part.length;if(size>cap){opus.destroy();break;}pcm.push(part);
    }
-   if(size<48000*2*2*0.4||size>cap||!canListen(voicePolicy(routes.get(routeKey),guildId),userId))return;
+   if(connections.get(routeKey)!==state||size<48000*2*2*0.4||size>cap||!canListen(voicePolicy(routes.get(routeKey),guildId),userId))return;
    const transcript=await transcribe(Buffer.concat(pcm));
    if(transcript)await handleVoiceCommand(guildId,state.channelId,userId,transcript);
   }catch(e){console.warn('Speech input could not be handled:',String(e.message||e).slice(0,140))}
@@ -178,7 +185,7 @@ function setupReceiver(guildId,state){
 client.once('ready',()=>{console.log(JSON.stringify({service:'midnight-cad-voice-worker',ready:true,bot:client.user.username}));void syncRoutes();});
 client.on('error',()=>console.error('Discord gateway connection error'));
 const server=http.createServer(async(req,res)=>{
- if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',ready:client.isReady(),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
+ if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.4.0',routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechRecognitionCredentialConfigured:Boolean(process.env.OPENAI_API_KEY),voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
  if(req.url!=='/v1/dispatch'||req.method!=='POST')return respond(res,404,{error:'Not found'});
  if(!authorized(req))return respond(res,401,{error:'Unauthorized'});
  try{return respond(res,200,await play(await readJson(req)));}catch(e){return respond(res,400,{error:String(e.message||'Voice dispatch failed').slice(0,180)});}
@@ -187,3 +194,5 @@ server.listen(port,'0.0.0.0');
 await client.login(token);
 void (async()=>{while(true){await delay(5_000);await deliver();}})();
 setInterval(()=>void syncRoutes(),30_000).unref();
+
+
