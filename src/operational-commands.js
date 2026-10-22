@@ -1,4 +1,5 @@
 import {normalizeRadioCodes} from './radio-reference.js';
+import {recordCommand} from './record-commands.js';
 // Only imperative self-duress and incident-bound caller investigations become tools.
 export function operationalCommand(input){
  let s=normalizeRadioCodes(String(input).toLowerCase().replace(/[’‘]/g,"'").trim().replace(/[.!?]+$/,''));
@@ -17,12 +18,16 @@ export function operationalCommand(input){
  return null;
 }
 export function operationalIntentAllowed(intent,text){
+ if(intent.action==='set_location'){const request=String(text).replace(/^(?:dispatch|central)[,.:;!?\s]+/i,'').replace(/^(?:please|can you|could you|would you)\s+/i,'').replace(/^please\s+/i,'');return recordCommand(request)?.action==='set_location';}
  if(intent.action==='close_call'){const request=String(text).toLowerCase().replace(/^(?:dispatch|central)[,.:;!?\s]+/,'').replace(/^(?:please|can you|could you|would you)\s+/,'').replace(/^please\s+/,'');return /^(?:clear|close|resolve)\b/.test(request)&&! /\b(?:do not|don't|never|except|all calls)\b/.test(request);}
  if(intent.action==='duress')return operationalCommand(String(text).replace(/^(?:dispatch|central)[,.:;!?\s]+/i,''))?.action==='duress';
  if(['trace','trace_advance'].includes(intent.action))return operationalCommand(String(text).replace(/^(?:dispatch|central)[,.:;!?\s]+/i,''))?.action===intent.action;
  return true;
 }
 export function voiceCommandText(cmd){
+ if(cmd.action==='run_name')return 'run name '+cmd.query;
+ if(cmd.action==='run_plate')return 'run plate '+cmd.query;
+ if(cmd.action==='set_location')return 'set location '+cmd.query;
  if(['duress','trace','trace_advance'].includes(cmd.action))return cmd.action+(cmd.id?' call '+cmd.id:'');
  if(cmd.action==='close_call')return 'close call'+(cmd.id?' '+cmd.id:'');
  if(cmd.action==='call')return cmd.id?'call '+cmd.id:'my call details';
