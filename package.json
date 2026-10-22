@@ -1,6 +1,6 @@
 {
   "name": "midnight-cad-voice-worker",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "private": true,
   "type": "module",
   "engines": {
@@ -17,5 +17,3 @@
     "@discordjs/opus": "0.10.0"
   }
 }
-
-
