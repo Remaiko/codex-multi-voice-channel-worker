@@ -19,13 +19,17 @@ export function parseVoiceCommand(transcript, wake = 'dispatch') {
   if (!phrase || !text.toLowerCase().startsWith(phrase)) return null;
   const suffix = text.slice(phrase.length);
   if (!/^[,.:;!?\s]/.test(suffix)) return null;
-  const command = suffix.replace(/^[,.:;!?\s]+/, '').trim().toLowerCase();
+  let command = suffix.replace(/^[,.:;!?\s]+/, '').trim().toLowerCase().replace(/[.!?]+$/,'');
+  command=command.replace(/^please\s+/,'').replace(/^(?:can you|could you|would you)\s+/,'').replace(/^please\s+/,'').replace(/\s+please$/,'');
+  command=command.replace(/\bten[ -]+(zero|one|two|three|four|five|six|seven|eight|nine)\b/g,(_,n)=>'10-'+['zero','one','two','three','four','five','six','seven','eight','nine'].indexOf(n));
+  if (/^(?:10[- ]?4|copy|copied|acknowledged|understood)$/.test(command)) return {action:'acknowledge'};
+  if (/^(?:10[- ]?9|repeat that|repeat the last transmission|what did you say)$/.test(command)) return {action:'repeat'};
   if (/^(radio check|check in|are you there|respond|hello)\b/.test(command)) return {action:'radio_check'};
   if (/^(repeat|say again|repeat last call|repeat transmission)\b/.test(command)) return {action:'repeat'};
-  if (/^(status|my status|duty status|unit status)\b/.test(command)) return {action:'status'};
-  if (/^(active calls|calls|pending calls|open calls)\b/.test(command)) return {action:'calls'};
-  if (/^(available units|units|on duty units)\b/.test(command)) return {action:'units'};
-  const m = /^(?:call|incident)\s+(?:number\s+|#)?(\d{1,18})\b/.exec(command);
+  if (/^(?:status|my status|duty status|unit status|check my status|am i on duty|what(?:'s| is) my status)\b/.test(command)) return {action:'status'};
+  if (/^(?:active calls|calls|pending calls|open calls|what calls are (?:active|pending|open)|are there any (?:active |pending |open )?calls|any calls pending|show (?:me )?(?:the )?(?:active |pending |open )?calls)\b/.test(command)) return {action:'calls'};
+  if (/^(?:available units|units|on duty units|who(?:'s| is) (?:available|on duty)|which units are (?:available|on duty)|show (?:me )?(?:the )?available units)\b/.test(command)) return {action:'units'};
+  const m = /^(?:(?:tell me about|give me (?:the )?details (?:for|on)|details (?:for|on))\s+)?(?:call|incident)\s+(?:number\s+|#)?(\d{1,18})\b/.exec(command);
   if (m) return {action:'call', id:m[1]};
   return command ? {action:'unrecognized'} : null;
 }
@@ -48,3 +52,4 @@ export function describeVoiceResult(command, data) {
   }
   return 'Dispatch received. That command is not available.';
 }
+

@@ -21,12 +21,11 @@ services:
       - key: ELEVENLABS_API_KEY
         sync: false
       - key: ELEVENLABS_VOICE_ID
-        value: "21m00Tcm4TlvDq8ikWAM"
+        value: "D4xQvkd2SmpDZJ8sEwvA"
       - key: ELEVENLABS_MODEL_ID
         value: eleven_multilingual_v2
       - key: VOICE_INPUT_ENABLED
         value: "true"
       - key: VOICE_COMMANDS_ENABLED
         value: "true"
-
 
