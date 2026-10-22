@@ -148,14 +148,30 @@ async function replyInGuild(guildId,channelId,userId,message){
  console.log(JSON.stringify({voiceReplyTiming:{synthesisMs:Date.now()-synthesisStart}}));
  await play({guildId,agencyCode:r.agency_code,eventId:String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),voiceChannelId:r.voice_channel_id,authorizedUserIds:permitted,audioBase64:audio.toString('base64')});
 }
+const radioConversations=new Map();
 async function handleVoiceCommand(guildId,channelId,userId,text){
  const route=routes.get(voiceRouteKey(guildId,channelId)),policy=voicePolicy(route,guildId);
  if(!canListen(policy,userId))return;
  const now=Date.now(),key=voiceRouteKey(guildId,channelId)+':'+userId;
  if((cooldowns.get(key)||0)>now)return;
  cooldowns.set(key,now+2500);
- const cmd=parseVoiceCommand(text,wakePhrase);
+ let cmd=parseVoiceCommand(text,wakePhrase);
  if(!cmd)return;
+ if(cmd.action==='unrecognized'){
+  const previous=radioConversations.get(key),history=previous&&now-previous.at<300000?previous.messages:[];
+  try{
+   const intent=await sessionSpeech.interpret(String(text).slice(0,700),history,{guildId,channelId,userId});
+   if(!intent||!['reply','status','calls','units','call','set_status','attach','detach'].includes(intent.action))throw Error('Invalid conversation intent');
+   if(intent.action==='set_status'&&!['available','busy','en_route','on_scene','transporting','unavailable'].includes(intent.status))throw Error('Invalid conversation status');
+   if(['call','attach','detach'].includes(intent.action)&&!/^\d{1,18}$/.test(intent.id||''))throw Error('Invalid conversation call');
+   if(intent.action==='reply'){
+    if(typeof intent.reply!=='string'||!intent.reply.trim()||intent.reply.length>450)throw Error('Invalid conversation reply');
+    radioConversations.set(key,{at:now,messages:[...history,{role:'user',content:String(text).slice(0,700)},{role:'assistant',content:intent.reply}].slice(-4)});if(radioConversations.size>200)radioConversations.delete(radioConversations.keys().next().value);
+    return replyInGuild(guildId,channelId,userId,intent.reply);
+   }
+   radioConversations.delete(key);cmd=intent;
+  }catch{return replyInGuild(guildId,channelId,userId,'Central received. Conversational dispatch is temporarily unavailable. Standard radio commands are still active.');}
+ }
  if(cmd.action==='code_reference')return replyInGuild(guildId,channelId,userId,codeReply(cmd.code));
  if(cmd.action==='acknowledge')return replyInGuild(guildId,channelId,userId,'Dispatch copies. Ten four.');
  if(cmd.action==='radio_check')return replyInGuild(guildId,channelId,userId,'Dispatch copies. Radio check acknowledged.');
@@ -208,7 +224,7 @@ function setupReceiver(guildId,state){
 for(const bot of bots){bot.client.on('voiceStateUpdate',()=>{clearTimeout(presenceTimer);presenceTimer=setTimeout(()=>void syncRoutes(),250);});bot.client.once('ready',()=>{console.log(JSON.stringify({service:'midnight-cad-voice-worker',ready:true,identity:bot.key}));void syncRoutes();});bot.client.on('error',()=>console.error('Discord gateway connection error',bot.key));}
 
 const server=http.createServer(async(req,res)=>{
- if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.10',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',speechInputMode:speechConfig.provider==='cad-relay'?'streaming':'batch',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
+ if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.11',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',speechInputMode:speechConfig.provider==='cad-relay'?'streaming':'batch',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
  if(!['/v1/dispatch','/v1/fleet'].includes(req.url)||req.method!=='POST')return respond(res,404,{error:'Not found'});
  if(!authorized(req))return respond(res,401,{error:'Unauthorized'});
  if(req.url==='/v1/fleet'){
