@@ -1,3 +1,4 @@
+import {prepareRadioSpeech} from './radio-speech.js';
 import {operationalIntentAllowed,voiceCommandText} from './operational-commands.js';
 import {audienceStatus} from './voice-audience.js';
 import {codeReply} from './radio-reference.js';
@@ -106,9 +107,11 @@ async function say(text,voiceId){
  return localSpeech(text);
 }
 async function sayDelivery(delivery,text){
- const response=await fetch(controlUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action:'speech',id:delivery.id,text}),signal:AbortSignal.timeout(45000)});
+ const pcm=await prepareRadioSpeech(text,{decode:decodePcm,speak:async segment=>{
+ const response=await fetch(controlUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action:'speech',id:delivery.id,text:segment}),signal:AbortSignal.timeout(45000)});
  if(!response.ok)throw Error('Selected dispatch voice unavailable ('+response.status+').');
  const audio=Buffer.from(await response.arrayBuffer());if(audio.length<100||audio.length>4000000)throw Error('Invalid dispatch speech recording.');return audio;
+ }});return wavFromPcm(pcm);
 }
 function makeSpeech(delivery){if(typeof delivery.payload?.radio_message==='string')return delivery.payload.radio_message.replace(/[\x00-\x1F]/g,' ').slice(0,600);const p=delivery.payload||{},t=delivery.templates||{},kind=['new','update','duress','amber'].includes(delivery.kind)?delivery.kind:'update';const defaults={new:'Units needed: {call_type}. Priority {priority}. {location}, postal {postal}. {details}. Call {call_id}.',update:'Units attached to {call_type} at {location}. Updated information: {details}. Status {status}.',duress:'Duress alert. {call_type}. {location}, postal {postal}. {details}. Call {call_id}.',amber:'Amber alert. {call_type}. {location}, postal {postal}. {details}. Call {call_id}.'};const values={call_id:delivery.call_id||delivery.event_id||'',call_type:p.call_type||'incident',priority:p.priority||'unassigned',location:p.location||'',postal:p.postal||'unknown',status:p.status||'',details:p.narrative||p.details||'',agency:delivery.agency_code||''};const expand=template=>String(template||'').replace(/\{([a-z_]+)\}/gi,(_,key)=>values[key.toLowerCase()]||'').replace(/\s+([.,!?])/g,'$1').replace(/(?:\s*\.\s*){2,}/g,'. ').trim();const prefix=Object.hasOwn(t,'prefix')?t.prefix:'Dispatch, attention units',eventText=Object.hasOwn(t,kind)?t[kind]:defaults[kind],suffix=Object.hasOwn(t,'suffix')?t.suffix:'';const pieces=[expand(prefix),expand(eventText),expand(suffix)].filter(Boolean);return pieces.join('. ').replace(/(?:\s*\.\s*){2,}/g,'. ').slice(0,850);}
 async function control(action,extra={}){const response=await fetch(action==='routes'?voiceRouteUrl:controlUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action,...extra}),signal:AbortSignal.timeout(20_000)});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'Voice control endpoint failed.');return data;}
@@ -144,10 +147,11 @@ async function replyInGuild(guildId,channelId,userId,message){
  if(!permitted.includes(String(userId)))return;
  const audience=audienceStatus(r,state.gateway.guilds.cache.get(guildId)?.channels.cache.get(channelId)?.members);
  if(!audience.playback_ready)throw Error(audience.blocked_listeners?'Voice dispatch paused: a listener needs CAD linking, on-duty department access and voice alerts.':'No authorized listeners are present.');
- const replyText=String(message).replace(/[\x00-\x1F]/g,' ').slice(0,450);
- const synthesisStart=Date.now();const audio=await sessionSpeech.speak(replyText,lastVoiceChoice.get(guildId)||selectedDispatchVoice(process.env.ELEVENLABS_VOICE_ID,'D4xQvkd2SmpDZJ8sEwvA'),{guildId,channelId,userId});
+ const replyText=String(message).replace(/[\x00-\x1F]/g,' ');
+ const voice=lastVoiceChoice.get(guildId)||selectedDispatchVoice(process.env.ELEVENLABS_VOICE_ID,'D4xQvkd2SmpDZJ8sEwvA');
+ const synthesisStart=Date.now();const audio=await prepareRadioSpeech(replyText,{decode:decodePcm,speak:segment=>sessionSpeech.speak(segment,voice,{guildId,channelId,userId})});
  console.log(JSON.stringify({voiceReplyTiming:{synthesisMs:Date.now()-synthesisStart}}));
- await play({guildId,agencyCode:r.agency_code,eventId:String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),voiceChannelId:r.voice_channel_id,authorizedUserIds:permitted,audioBase64:audio.toString('base64')});
+ await play({guildId,agencyCode:r.agency_code,eventId:String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),voiceChannelId:r.voice_channel_id,authorizedUserIds:permitted,audioFormat:'pcm',audioBase64:audio.toString('base64')});
 }
 const radioConversations=new Map();
 async function handleVoiceCommand(guildId,channelId,userId,text){
