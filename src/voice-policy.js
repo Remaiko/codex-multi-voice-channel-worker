@@ -16,8 +16,10 @@ export function canBroadcast(policy, presentUserIds) {
 }
 export function parseVoiceCommand(transcript, wake = 'dispatch') {
   if (typeof transcript !== 'string') return null;
-  const text = transcript.trim().replace(/\s+/g, ' ');
-  if (normalizeRadioCodes(text.toLowerCase().replace(/[.!?]+$/, '')) === '10-99') return {action:'duress'};
+  const text = transcript.trim().replace(/\s+/g, ' ').replace(/^(?:hey|okay|ok)\s+/i,'');
+  // Emergency signals from an authorized on-duty speaker need no additional wake word.
+  const emergency=operationalCommand(text);
+  if(emergency?.action==='duress')return emergency;
   const configured = String(wake).trim().toLowerCase();
   if (!configured) return null;
   const phrase = [configured, 'dispatch', 'central'].find(word => text.toLowerCase().startsWith(word) && /^[,.:;!?\s]/.test(text.slice(word.length)));
@@ -26,7 +28,7 @@ export function parseVoiceCommand(transcript, wake = 'dispatch') {
   if (!/^[,.:;!?\s]/.test(suffix)) return null;
   let command = suffix.replace(/^[,.:;!?\s]+/, '').trim().toLowerCase().replace(/[’‘]/g,"'").replace(/[.!?]+$/,'');
   command=command.replace(/^please\s+/,'').replace(/^(?:can you|could you|would you)\s+/,'').replace(/^please\s+/,'').replace(/\s+please$/,'');
-  command=normalizeRadioCodes(command);
+  command=normalizeRadioCodes(command).replace(/^(?:dispatch|central)[,.:;!?\s]+/,'');
   const operation=operationalCommand(command);if(operation)return operation;
   const referenceCommand=codeCommand(command);if(referenceCommand)return referenceCommand;
   if (/^(?:10[- ]?4|copy|copied|acknowledged|understood)$/.test(command)) return {action:'acknowledge'};
@@ -63,3 +65,4 @@ export function describeVoiceResult(command, data) {
   }
   return 'Dispatch received. That command is not available.';
 }
+
