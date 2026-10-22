@@ -1,12 +1,13 @@
 import {normalizeRadioCodes} from './radio-reference.js';
 // Only imperative self-duress and incident-bound caller investigations become tools.
 export function operationalCommand(input){
- const s=normalizeRadioCodes(String(input).toLowerCase().trim().replace(/[.!?]+$/,'')).replace(/^please\s+/,'');
- if(/^(?:10-99|(?:activate|enable|trigger|start)(?: my)? (?:duress|10-99)(?: alert)?)$/.test(s))return {action:'duress'};
+ let s=normalizeRadioCodes(String(input).toLowerCase().replace(/[’‘]/g,"'").trim().replace(/[.!?]+$/,''));
+ for(let i=0;i<3;i++)s=s.replace(/^(?:please|can you|could you|would you|i need you to|i need to|i need|go ahead and)\s+/,'').replace(/\s+(?:for me|right now|now|please|immediately)$/,'').trim();
+ if(/^(?:duress|10-99|1099|(?:activate|enable|trigger|start|raise|send|turn on)(?: (?:my|the|a|an))? (?:duress|10-99|1099)(?: (?:alert|signal|alarm))?|(?:i am|i'm|mark me|show me|put me)(?: as| on| in)? 10-99)(?:$|[,;]?\s+(?:at|near|postal|post code|for|now|please|immediately)\b)/.test(s))return {action:'duress'};
  const id=/(?:call|incident)(?: number)?\s*#?\s*(\d{1,18})\b/.exec(s)?.[1]||null;
  if(/^(?:continue|advance|check|give me|what(?:'s| is))\b/.test(s)&&/\btrace(?: status| progress)?\b/.test(s)&&!/\b(?:name|person|phone|ip address)\b/.test(s))return {action:'trace_advance',id};
  if(/^(?:start|begin|run|initiate|trace)\b/.test(s)&&/\btrace\b/.test(s)&&/\b(?:caller|call|911|incident)\b/.test(s))return {action:'trace',id};
- if(/\b(?:details|information|info|brief|briefing|read out|tell me about)\b/.test(s)&&/\b(?:call|incident|assignment)\b/.test(s)&&!/\b(?:delete|cancel|close|change)\b/.test(s))return {action:'call',id};
+ if(/\b(?:details|information|info|brief|briefing|read out|tell me about)\b/.test(s)&&/\b(?:call|incident|assignment)\b/.test(s)&&(id||/\b(?:my|assigned)\b/.test(s))&&!/\b(?:delete|cancel|close|change)\b/.test(s))return {action:'call',id};
  return null;
 }
 export function operationalIntentAllowed(intent,text){
