@@ -178,7 +178,7 @@ function setupReceiver(guildId,state){
   const routeKey=voiceRouteKey(guildId,state.channelId);
   const key=routeKey+':'+userId;
   if(receiving.has(key)||!canListen(voicePolicy(routes.get(routeKey),guildId),userId))return;
-  const channel=await state.gateway.guilds.cache.get(guildId)?.channels.fetch(state.channelId).catch(()=>null);
+  const channel=state.gateway.guilds.cache.get(guildId)?.channels.cache.get(state.channelId);
   const member=channel?.members?.get(userId);
   if(!member||member.user.bot||!canListen(voicePolicy(routes.get(routeKey),guildId),userId))return;
   receiving.add(key);let inputStream;
@@ -222,4 +222,3 @@ await Promise.allSettled(bots.slice(1).map(async bot=>{try{await bot.client.logi
 ensureSpeechReady();
 void (async()=>{while(true){await delay(5_000);await deliver();}})();
 setInterval(()=>void syncRoutes(),30_000).unref();
-
