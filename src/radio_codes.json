@@ -3,8 +3,8 @@
   "source": {
     "document": "ASP & Game and Fish Complete Training SOP",
     "slug": "combined-training",
-    "appendix": "A",
-    "note": "Restored from the saved CAD student SOP. RP-only meanings; reserved codes remain unassigned. Signals 41 and 42 are retired."
+    "appendix": "A and B",
+    "note": "Restored from the saved CAD student SOP. Appendix A defines the active codes; Appendix B supplies supplementary RP terminology. Reserved codes remain unassigned; Signals 41 and 42 remain retired."
   },
   "sections": [
     {
@@ -584,6 +584,436 @@
           "code": "Priority 3",
           "meaning": "Low-priority / routine transport",
           "basis": "Unified RP standard"
+        }
+      ]
+    },
+    {
+      "section": "Emergency and operational terminology",
+      "entries": [
+        {
+          "code": "Emergency traffic",
+          "meaning": "Clear the channel; only urgent incident and safety traffic.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Officer needs assistance",
+          "meaning": "Urgent request for additional law enforcement units; provide location and threat.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Officer down",
+          "meaning": "Officer injured/incapacitated; request EMS and immediate backup; give location.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Mayday",
+          "meaning": "Immediate life-threatening distress; identify unit, location and nature of emergency.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "All clear",
+          "meaning": "Immediate hazard resolved; command confirms normal traffic may resume.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Scene secure",
+          "meaning": "Scene checked and stabilized; does not automatically mean investigation complete.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Hold traffic",
+          "meaning": "Dispatch temporarily pauses routine transmissions.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Resume normal traffic",
+          "meaning": "Dispatch returns channel to normal operation.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Stage / staging",
+          "meaning": "Responding units wait at a safe designated location.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Clear / available",
+          "meaning": "Unit finished assignment and available for another call.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Out of service",
+          "meaning": "Unit unavailable for dispatch; state reason if required.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "En route",
+          "meaning": "Unit traveling to assigned incident (10-97 in this RP codebook).",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "On scene",
+          "meaning": "Unit arrived at assigned incident (10-23 in this RP codebook).",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Negative contact",
+          "meaning": "Subject, vehicle or reported condition not located.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Unable to locate (UTL)",
+          "meaning": "Search or check completed without locating the subject.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Cancel response",
+          "meaning": "Dispatch/incident command withdraws assignment; acknowledge cancellation.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Request additional units",
+          "meaning": "Ask dispatch for number/type of units and specify location.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Switch to tactical channel",
+          "meaning": "Move incident operations to designated channel after dispatch coordination.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        }
+      ]
+    },
+    {
+      "section": "Dispatch, identification and investigations",
+      "entries": [
+        {
+          "code": "BOLO",
+          "meaning": "Be on the lookout: disseminated description and reason for alert.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "ATL",
+          "meaning": "Attempt to locate: seek person or vehicle; not itself arrest authority.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "APB",
+          "meaning": "All-points bulletin: broad alert; verify underlying agency information.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "CAD",
+          "meaning": "Computer-aided dispatch incident record and unit status.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "MDT / MDC",
+          "meaning": "Mobile data terminal / mobile data computer.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "NCIC",
+          "meaning": "National Crime Information Center; access only when authorized.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "ACIC",
+          "meaning": "Arkansas Crime Information Center; access only when authorized.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "DL / OLN",
+          "meaning": "Driver license / operator license number.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "VIN",
+          "meaning": "Vehicle identification number.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "LP / TAG",
+          "meaning": "License plate / vehicle registration tag.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "RO",
+          "meaning": "Registered owner of vehicle.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "DOB",
+          "meaning": "Date of birth; transmit personal data only on approved channel.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "ETA",
+          "meaning": "Estimated time of arrival.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "RP",
+          "meaning": "Reporting party (not roleplay in a dispatch context).",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "COMPL",
+          "meaning": "Complainant; person reporting or alleging an incident.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "SUS / SUBJ",
+          "meaning": "Suspect / subject; use clear descriptions to avoid ambiguity.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "WIT",
+          "meaning": "Witness; identify by name only on authorized systems.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "PC",
+          "meaning": "Probable cause; describe factual basis rather than only abbreviation.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "RS",
+          "meaning": "Reasonable suspicion; describe factual basis rather than only abbreviation.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "GOA",
+          "meaning": "Gone on arrival; subject or vehicle departed before arrival.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "UTL",
+          "meaning": "Unable to locate after check or search.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "NFI",
+          "meaning": "No further information at time of transmission.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "FI",
+          "meaning": "Field interview; document per department policy.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "BWC / DWC",
+          "meaning": "Body-worn camera / dash or in-car camera.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "RMS",
+          "meaning": "Records management system; file report under correct incident number.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Case / incident number",
+          "meaning": "Unique report identifier supplied by CAD or records.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        }
+      ]
+    },
+    {
+      "section": "Response and incident command",
+      "entries": [
+        {
+          "code": "Priority response",
+          "meaning": "Response urgency assigned by dispatch or supervisor; obey server driving rules.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Routine response",
+          "meaning": "Normal driving; no emergency driving authority implied.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "EMS",
+          "meaning": "Emergency medical services.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "FD",
+          "meaning": "Fire department.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "SAR",
+          "meaning": "Search and rescue.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "ICS",
+          "meaning": "Incident Command System.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "IC",
+          "meaning": "Incident commander responsible for incident objectives and coordination.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "UC",
+          "meaning": "Unified command across agencies with shared jurisdiction.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "CP",
+          "meaning": "Command post or designated incident command location.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "LZ",
+          "meaning": "Landing zone; report hazards and coordinate aircraft operations.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "MCI",
+          "meaning": "Mass-casualty incident; request EMS incident management.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Triage",
+          "meaning": "Prioritization of patient care by trained responders.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "CPR",
+          "meaning": "Cardiopulmonary resuscitation.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "AED",
+          "meaning": "Automated external defibrillator.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "BLS / ALS",
+          "meaning": "Basic life support / advanced life support.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "DOA",
+          "meaning": "Dead on arrival; do not pronounce death without authorized role.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "LE / LEO",
+          "meaning": "Law enforcement / law enforcement officer.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "CVE / DOT",
+          "meaning": "Commercial vehicle enforcement / Department of Transportation context.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "HazMat",
+          "meaning": "Hazardous materials; establish safe distance and request specialists.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Perimeter",
+          "meaning": "Controlled boundary to contain hazard or protect evidence.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Mutual aid",
+          "meaning": "Assistance requested from another agency through dispatch/command.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        }
+      ]
+    },
+    {
+      "section": "Wildlife, parks and marine operations",
+      "entries": [
+        {
+          "code": "AGFC",
+          "meaning": "Arkansas Game and Fish Commission (real-world agency reference).",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "WMA",
+          "meaning": "Wildlife management area.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "PFD",
+          "meaning": "Personal flotation device.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "PWC",
+          "meaning": "Personal watercraft.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "BUI",
+          "meaning": "Boating under the influence.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "AIS",
+          "meaning": "Aquatic invasive species.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "HIN",
+          "meaning": "Hull identification number.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Vessel registration",
+          "meaning": "Boat registration check; transmit identifying details through approved system.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Poaching complaint",
+          "meaning": "Report of unlawful wildlife taking; specify location, species and observations.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Hunting complaint",
+          "meaning": "Reported hunting-related violation or safety concern.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Fishing complaint",
+          "meaning": "Reported fishing-related violation or safety concern.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Wildlife conflict",
+          "meaning": "Human-wildlife safety incident; request qualified personnel when needed.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Injured wildlife",
+          "meaning": "Wildlife requiring safe containment, veterinary or authorized specialist response.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Vessel in distress",
+          "meaning": "Boat or occupants need assistance; provide waterway and location.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Missing boater",
+          "meaning": "Person unaccounted for on water; request marine and SAR resources.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Shoreline search",
+          "meaning": "Coordinated search of shoreline or adjacent terrain.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
+        },
+        {
+          "code": "Conservation evidence",
+          "meaning": "Wildlife/gear/permit evidence logged with species and custody details.",
+          "basis": "Supplementary RP terminology · SOP Appendix B"
         }
       ]
     }
