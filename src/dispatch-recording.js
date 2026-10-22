@@ -1,7 +1,7 @@
 import {readFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {spawn} from 'node:child_process';
-export const approvedVoices=['DODLEQrClDo8wCz460ld','GCPLhb1XrVwcoKUJYcvz','D4xQvkd2SmpDZJ8sEwvA'];
+export const approvedVoices=["DODLEQrClDo8wCz460ld", "GCPLhb1XrVwcoKUJYcvz", "D4xQvkd2SmpDZJ8sEwvA", "CwhRBWXzGAHq8TQ4Fs17", "EXAVITQu4vr4xnSDxMaL", "SAz9YHcvj6GT2YYXdXww", "Xb7hH8MSUJpSbSDYk0k2", "XrExE9yKIg1WjnnlVkGX", "cjVigY5qzO86Huf0OWal", "hpp4J3VqNfWAUOO0d1Us"];
 export function dispatchEventId(value){return /^[1-9]\d{0,21}$/.test(String(value??''));}
 export function dispatchTone(delivery){if(delivery.kind==='amber')return 'AMBER';if(delivery.kind==='duress')return 'Duress';if(Object.hasOwn(definitions,delivery.payload?.tone))return delivery.payload.tone;const p=delivery.payload||{},type=String(p.call_type||'').toLowerCase();if(/fire|smoke|hazmat/.test(type))return 'Fire';if(/medical|ems|injur|cardiac|ambulance/.test(type))return 'Medical';if(/backup|assistance/.test(type))return 'Backup';return /^(1|2)$|urgent|high|emergency/i.test(String(p.priority))?'Priority':'Routine';}
 export function selectedDispatchVoice(value,fallback){return approvedVoices.includes(value)?value:fallback;}
