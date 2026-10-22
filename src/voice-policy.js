@@ -1,3 +1,4 @@
+import {operationalCommand} from './operational-commands.js';
 /** Explicitly consented, currently authorized voice policy; default deny. */
 import {normalizeRadioCodes,codeCommand} from './radio-reference.js';
 const snowflake = /^\d{15,22}$/;
@@ -16,6 +17,7 @@ export function canBroadcast(policy, presentUserIds) {
 export function parseVoiceCommand(transcript, wake = 'dispatch') {
   if (typeof transcript !== 'string') return null;
   const text = transcript.trim().replace(/\s+/g, ' ');
+  if (normalizeRadioCodes(text.toLowerCase().replace(/[.!?]+$/, '')) === '10-99') return {action:'duress'};
   const configured = String(wake).trim().toLowerCase();
   if (!configured) return null;
   const phrase = [configured, 'dispatch', 'central'].find(word => text.toLowerCase().startsWith(word) && /^[,.:;!?\s]/.test(text.slice(word.length)));
@@ -25,6 +27,7 @@ export function parseVoiceCommand(transcript, wake = 'dispatch') {
   let command = suffix.replace(/^[,.:;!?\s]+/, '').trim().toLowerCase().replace(/[’‘]/g,"'").replace(/[.!?]+$/,'');
   command=command.replace(/^please\s+/,'').replace(/^(?:can you|could you|would you)\s+/,'').replace(/^please\s+/,'').replace(/\s+please$/,'');
   command=normalizeRadioCodes(command);
+  const operation=operationalCommand(command);if(operation)return operation;
   const referenceCommand=codeCommand(command);if(referenceCommand)return referenceCommand;
   if (/^(?:10[- ]?4|copy|copied|acknowledged|understood)$/.test(command)) return {action:'acknowledge'};
   if (/^(?:10[- ]?9|repeat that|repeat the last transmission|what did you say)$/.test(command)) return {action:'repeat'};
@@ -60,4 +63,3 @@ export function describeVoiceResult(command, data) {
   }
   return 'Dispatch received. That command is not available.';
 }
-
