@@ -1,4 +1,5 @@
 import {createSessionSpeech} from './session-speech.js';
+import {closeVoiceWorker} from './shutdown.js';
 import {voicePresence} from './voice-presence.js';
 import http from 'node:http';
 import {deliverValidated} from './delivery-validation.js';
@@ -43,7 +44,7 @@ const lastAnnouncements=new Map();
 const receiving=new Set();
 const cooldowns=new Map();
 const recentSpeech=new Map();
-let lastRouteSyncAt=0,lastEventPollAt=0,routeSyncFlight=null,presenceTimer=null;
+let lastRouteSyncAt=0,lastEventPollAt=0,routeSyncFlight=null,presenceTimer=null,shuttingDown=false;
 const configuredSpeech=recognitionConfig(process.env);
 const speechConfig=configuredSpeech.provider==='none'&&['auto',undefined].includes(process.env.VOICE_STT_PROVIDER)?{provider:'cad-relay',apiKey:null}:configuredSpeech;
 const sessionSpeech=createSessionSpeech({controlUrl,workerKey});
@@ -107,10 +108,10 @@ async function sayDelivery(delivery,text){
 }
 function makeSpeech(delivery){if(typeof delivery.payload?.radio_message==='string')return delivery.payload.radio_message.replace(/[\x00-\x1F]/g,' ').slice(0,600);const p=delivery.payload||{},t=delivery.templates||{},kind=['new','update','duress','amber'].includes(delivery.kind)?delivery.kind:'update';const defaults={new:'Units needed: {call_type}. Priority {priority}. {location}, postal {postal}. {details}. Call {call_id}.',update:'Units attached to {call_type} at {location}. Updated information: {details}. Status {status}.',duress:'Duress alert. {call_type}. {location}, postal {postal}. {details}. Call {call_id}.',amber:'Amber alert. {call_type}. {location}, postal {postal}. {details}. Call {call_id}.'};const values={call_id:delivery.call_id||delivery.event_id||'',call_type:p.call_type||'incident',priority:p.priority||'unassigned',location:p.location||'',postal:p.postal||'unknown',status:p.status||'',details:p.narrative||p.details||'',agency:delivery.agency_code||''};const expand=template=>String(template||'').replace(/\{([a-z_]+)\}/gi,(_,key)=>values[key.toLowerCase()]||'').replace(/\s+([.,!?])/g,'$1').replace(/(?:\s*\.\s*){2,}/g,'. ').trim();const prefix=Object.hasOwn(t,'prefix')?t.prefix:'Dispatch, attention units',eventText=Object.hasOwn(t,kind)?t[kind]:defaults[kind],suffix=Object.hasOwn(t,'suffix')?t.suffix:'';const pieces=[expand(prefix),expand(eventText),expand(suffix)].filter(Boolean);return pieces.join('. ').replace(/(?:\s*\.\s*){2,}/g,'. ').slice(0,850);}
 async function control(action,extra={}){const response=await fetch(action==='routes'?voiceRouteUrl:controlUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action,...extra}),signal:AbortSignal.timeout(20_000)});const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'Voice control endpoint failed.');return data;}
-function syncRoutes(){if(routeSyncFlight)return routeSyncFlight;routeSyncFlight=syncRoutesOnce().then(()=>ensureSpeechReady()).finally(()=>{routeSyncFlight=null;});return routeSyncFlight;}
+function syncRoutes(){if(shuttingDown)return Promise.resolve();if(routeSyncFlight)return routeSyncFlight;routeSyncFlight=syncRoutesOnce().then(()=>ensureSpeechReady()).finally(()=>{routeSyncFlight=null;});return routeSyncFlight;}
 async function syncRoutesOnce(){try{const response=await fetch(voiceRouteUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action:'routes',presence:voicePresence(connections,bots)}),signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error('Voice routes endpoint rejected request ('+response.status+')');const data=await response.json();if(!Array.isArray(data.routes))throw Error('Invalid routes payload');const wanted=new Map(flattenVoiceRoutes(data.routes).map(r=>[voiceRouteKey(String(r.guild_id),r.voice_channel_id),r]));for(const [key,state] of connections){if((!wanted.has(key)||routeBot(wanted.get(key)).key!==state.botKey)){state.connection.destroy();connections.delete(key);}}routes.clear();for(const [key,r] of wanted)routes.set(key,r);lastRouteSyncAt=Date.now();for(const r of idleVoiceRoutes()){try{await inGuild(queueKey(r.guild_id,r.voice_channel_id),()=>{const chosen=idleVoiceRoutes().find(x=>String(x.guild_id)===String(r.guild_id)&&routeBot(x).key===routeBot(r).key);return chosen?voiceFor(String(chosen.guild_id),chosen.voice_channel_id):undefined;});}catch(e){console.error('Voice route unavailable',voiceRouteKey(r.guild_id,r.voice_channel_id),String(e.message||e));}}}catch(e){console.error('Voice route sync failed',String(e.message||e));}}
 async function preflightAudience(delivery,verified){const guildId=String(delivery.guild_id),channelId=String(delivery.voice_channel_id);routeFor(guildId,delivery.agency_code,channelId);const state=await voiceFor(guildId,channelId);const channel=await state.gateway.guilds.cache.get(guildId).channels.fetch(channelId);const ids=[...channel.members.values()].filter(m=>!m.user.bot).map(m=>String(m.id));if(!ids.length)throw Error('No opted-in responders are present in the voice channel.');const allowed=new Set((verified.authorized_user_ids||[]).map(String));if(!ids.every(id=>allowed.has(id)))throw Error('Voice dispatch paused: an unauthorized listener is in the channel.');}
-async function deliver(){try{const {deliveries=[]}=await control('claim');lastEventPollAt=Date.now();await Promise.all(deliveries.map(async d=>{try{if(selectedDispatchVoice(d.voice_id))lastVoiceChoice.set(String(d.guild_id),selectedDispatchVoice(d.voice_id));const result=await deliverValidated(d,{validate:id=>control('validate',{id}),checkAudience:preflightAudience,makeSpeech,say:text=>sayDelivery(d,text),assemble:assembleDispatchAudio,play});if(!result.played){await control('ack',{id:d.id,ok:false,error:'delivery_no_longer_active',retry_seconds:60});return;}lastAnnouncements.set(voiceRouteKey(String(d.guild_id),String(d.voice_channel_id)),result.speech);await control('ack',{id:d.id,ok:true});console.log('Voice dispatch delivered',String(d.id),String(d.voice_channel_id));}catch(e){await control('ack',{id:d.id,ok:false,error:String(e.message||'voice_failed').slice(0,80),retry_seconds:60}).catch(()=>{});console.error('Voice dispatch failed',String(d.id),String(e.message||e));}}));}catch(e){console.error('Voice event poll failed',String(e.message||e));}}
+async function deliver(){if(shuttingDown)return;try{const {deliveries=[]}=await control('claim');lastEventPollAt=Date.now();await Promise.all(deliveries.map(async d=>{try{if(selectedDispatchVoice(d.voice_id))lastVoiceChoice.set(String(d.guild_id),selectedDispatchVoice(d.voice_id));const result=await deliverValidated(d,{validate:id=>control('validate',{id}),checkAudience:preflightAudience,makeSpeech,say:text=>sayDelivery(d,text),assemble:assembleDispatchAudio,play});if(!result.played){await control('ack',{id:d.id,ok:false,error:'delivery_no_longer_active',retry_seconds:60});return;}lastAnnouncements.set(voiceRouteKey(String(d.guild_id),String(d.voice_channel_id)),result.speech);await control('ack',{id:d.id,ok:true});console.log('Voice dispatch delivered',String(d.id),String(d.voice_channel_id));}catch(e){await control('ack',{id:d.id,ok:false,error:String(e.message||'voice_failed').slice(0,80),retry_seconds:60}).catch(()=>{});console.error('Voice dispatch failed',String(d.id),String(e.message||e));}}));}catch(e){console.error('Voice event poll failed',String(e.message||e));}}
 
 
 // v43.30 optional receive pipeline. Explicit opt-in must be recorded by the CAD route
@@ -155,11 +156,11 @@ async function handleVoiceCommand(guildId,channelId,userId,text){
  // The response is authorized by the CAD server using the Guild/Discord user link.
  // Do not pass through or trust caller-supplied user roles or account identifiers.
  if(!cadCommandUrl)return replyInGuild(guildId,channelId,userId,'Dispatch copies. CAD voice lookup is not configured.');
- if(!['status','calls','units','call'].includes(cmd.action))return replyInGuild(guildId,channelId,userId,'Dispatch received. That voice command is not yet enabled in CAD.');
+ if(!['status','calls','units','call','set_status','attach','detach'].includes(cmd.action))return replyInGuild(guildId,channelId,userId,'Dispatch received. That voice command is not yet enabled in CAD.');
  try{
   const target=new URL(cadCommandUrl);
   if(target.protocol!=='https:'||target.origin!==new URL(controlUrl).origin)throw Error('Voice command endpoint must match trusted CAD origin');
-  const response=await fetch(target,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+workerKey},body:JSON.stringify({guild_id:guildId,user_id:userId,action:'command',source:'discord-voice',command:cmd.action==='units'?'available units':cmd.action==='calls'?'active calls':cmd.action==='call'?'call '+cmd.id:'my status',request_id:cryptoRandomId()}),signal:AbortSignal.timeout(12000)});
+  const response=await fetch(target,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+workerKey},body:JSON.stringify({guild_id:guildId,channel_id:channelId,user_id:userId,action:'command',source:'discord-voice',command:cmd.action==='set_status'?'set status '+cmd.status:['attach','detach'].includes(cmd.action)?cmd.action+' call '+cmd.id:cmd.action==='units'?'available units':cmd.action==='calls'?'active calls':cmd.action==='call'?'call '+cmd.id:'my status',request_id:cryptoRandomId()}),signal:AbortSignal.timeout(12000)});
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw Error(String(data.error||'CAD radio lookup unavailable').slice(0,120));
   const speech=typeof data.reply==='string'?data.reply:describeVoiceResult(cmd,data.data);
@@ -171,7 +172,7 @@ function setupReceiver(guildId,state){
  const receiver=state.connection.receiver;
  if(!receiver)return;
  receiver.speaking.on('start',async(userId)=>{
-  if(speechSelfTest!=='passed')return;
+  if(shuttingDown||speechSelfTest!=='passed')return;
   const routeKey=voiceRouteKey(guildId,state.channelId);
   const key=routeKey+':'+userId;
   if(receiving.has(key)||!canListen(voicePolicy(routes.get(routeKey),guildId),userId))return;
@@ -198,7 +199,7 @@ function setupReceiver(guildId,state){
 for(const bot of bots){bot.client.on('voiceStateUpdate',()=>{clearTimeout(presenceTimer);presenceTimer=setTimeout(()=>void syncRoutes(),250);});bot.client.once('ready',()=>{console.log(JSON.stringify({service:'midnight-cad-voice-worker',ready:true,identity:bot.key}));void syncRoutes();});bot.client.on('error',()=>console.error('Discord gateway connection error',bot.key));}
 
 const server=http.createServer(async(req,res)=>{
- if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.6',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
+ if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.7',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
  if(!['/v1/dispatch','/v1/fleet'].includes(req.url)||req.method!=='POST')return respond(res,404,{error:'Not found'});
  if(!authorized(req))return respond(res,401,{error:'Unauthorized'});
  if(req.url==='/v1/fleet'){
@@ -210,6 +211,8 @@ const server=http.createServer(async(req,res)=>{
  try{return respond(res,200,await play(await readJson(req)));}catch(e){return respond(res,400,{error:String(e.message||'Voice dispatch failed').slice(0,180)});}
 });
 server.listen(port,'0.0.0.0');
+async function retire(){if(shuttingDown)return;shuttingDown=true;clearTimeout(presenceTimer);const timeout=setTimeout(()=>process.exit(0),1500);timeout.unref();await closeVoiceWorker({connections,bots,server});clearTimeout(timeout);process.exit(0);}
+process.once('SIGTERM',()=>void retire());process.once('SIGINT',()=>void retire());
 await client.login(token);
 await Promise.allSettled(bots.slice(1).map(async bot=>{try{await bot.client.login(bot.token);}catch{console.error('Companion bot login failed:',bot.key);}}));
 ensureSpeechReady();

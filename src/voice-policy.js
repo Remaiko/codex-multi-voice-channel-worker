@@ -19,11 +19,15 @@ export function parseVoiceCommand(transcript, wake = 'dispatch') {
   if (!phrase || !text.toLowerCase().startsWith(phrase)) return null;
   const suffix = text.slice(phrase.length);
   if (!/^[,.:;!?\s]/.test(suffix)) return null;
-  let command = suffix.replace(/^[,.:;!?\s]+/, '').trim().toLowerCase().replace(/[.!?]+$/,'');
+  let command = suffix.replace(/^[,.:;!?\s]+/, '').trim().toLowerCase().replace(/[’‘]/g,"'").replace(/[.!?]+$/,'');
   command=command.replace(/^please\s+/,'').replace(/^(?:can you|could you|would you)\s+/,'').replace(/^please\s+/,'').replace(/\s+please$/,'');
   command=command.replace(/\bten[ -]+(zero|one|two|three|four|five|six|seven|eight|nine)\b/g,(_,n)=>'10-'+['zero','one','two','three','four','five','six','seven','eight','nine'].indexOf(n));
   if (/^(?:10[- ]?4|copy|copied|acknowledged|understood)$/.test(command)) return {action:'acknowledge'};
   if (/^(?:10[- ]?9|repeat that|repeat the last transmission|what did you say)$/.test(command)) return {action:'repeat'};
+  const status=/^(?:show me|mark me|set my status(?: to)?|i am|i'm)\s+(available|busy|en[ -]route|on[ -]scene|transporting|unavailable)$/.exec(command);
+  if(status)return {action:'set_status',status:status[1].replace(/[ -]/g,'_')};
+  const assignment=/^(attach|assign|detach|clear) me (?:to|from) (?:call|incident)\s+(?:number\s+|#)?(\d{1,18})$/.exec(command);
+  if(assignment)return {action:['attach','assign'].includes(assignment[1])?'attach':'detach',id:assignment[2]};
   if (/^(radio check|check in|are you there|respond|hello)\b/.test(command)) return {action:'radio_check'};
   if (/^(repeat|say again|repeat last call|repeat transmission)\b/.test(command)) return {action:'repeat'};
   if (/^(?:status|my status|duty status|unit status|check my status|am i on duty|what(?:'s| is) my status)\b/.test(command)) return {action:'status'};
