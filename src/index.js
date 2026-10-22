@@ -167,7 +167,8 @@ async function handleVoiceCommand(guildId,channelId,userId,text){
   const previous=radioConversations.get(key),history=previous&&now-previous.at<300000?previous.messages:[];
   try{
    const intent=await sessionSpeech.interpret(String(text).slice(0,700),history,{guildId,channelId,userId});
-   if(!intent||!['reply','status','calls','units','call','set_status','attach','detach','duress','trace','trace_advance','close_call'].includes(intent.action))throw Error('Invalid conversation intent');
+   if(!intent||!['reply','status','calls','units','call','set_status','attach','detach','duress','trace','trace_advance','close_call','run_name','run_plate','set_location'].includes(intent.action))throw Error('Invalid conversation intent');
+   if(['run_name','run_plate','set_location'].includes(intent.action)&&(typeof intent.query!=='string'||intent.query.length<2||intent.query.length>100))throw Error('Invalid radio record query');
    if(intent.action==='set_status'&&!['available','busy','en_route','on_scene','transporting','unavailable'].includes(intent.status))throw Error('Invalid conversation status');
    if((['attach','detach'].includes(intent.action)||(['call','trace','trace_advance','close_call'].includes(intent.action)&&intent.id!=null))&&!/^\d{1,18}$/.test(intent.id||''))throw Error('Invalid conversation call');
    if(!operationalIntentAllowed(intent,text))return replyInGuild(guildId,channelId,userId,'Central needs an explicit own-unit duress request, or an assigned incident and caller to investigate. I cannot trace an arbitrary person.');
@@ -186,7 +187,7 @@ async function handleVoiceCommand(guildId,channelId,userId,text){
  // The response is authorized by the CAD server using the Guild/Discord user link.
  // Do not pass through or trust caller-supplied user roles or account identifiers.
  if(!cadCommandUrl)return replyInGuild(guildId,channelId,userId,'Dispatch copies. CAD voice lookup is not configured.');
- if(!['status','calls','units','call','set_status','attach','detach','duress','trace','trace_advance','close_call'].includes(cmd.action))return replyInGuild(guildId,channelId,userId,'Dispatch received. That voice command is not yet enabled in CAD.');
+ if(!['status','calls','units','call','set_status','attach','detach','duress','trace','trace_advance','close_call','run_name','run_plate','set_location'].includes(cmd.action))return replyInGuild(guildId,channelId,userId,'Dispatch received. That voice command is not yet enabled in CAD.');
  try{
   const target=new URL(cadCommandUrl);
   if(target.protocol!=='https:'||target.origin!==new URL(controlUrl).origin)throw Error('Voice command endpoint must match trusted CAD origin');
@@ -231,7 +232,7 @@ function setupReceiver(guildId,state){
 for(const bot of bots){bot.client.on('voiceStateUpdate',()=>{clearTimeout(presenceTimer);presenceTimer=setTimeout(()=>void syncRoutes(),250);});bot.client.once('ready',()=>{console.log(JSON.stringify({service:'midnight-cad-voice-worker',ready:true,identity:bot.key}));void syncRoutes();});bot.client.on('error',()=>console.error('Discord gateway connection error',bot.key));}
 
 const server=http.createServer(async(req,res)=>{
- if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.14',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',speechInputMode:speechConfig.provider==='cad-relay'?'streaming':'batch',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
+ if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.15',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',speechInputMode:speechConfig.provider==='cad-relay'?'streaming':'batch',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
  if(!['/v1/dispatch','/v1/fleet'].includes(req.url)||req.method!=='POST')return respond(res,404,{error:'Not found'});
  if(!authorized(req))return respond(res,401,{error:'Unauthorized'});
  if(req.url==='/v1/fleet'){

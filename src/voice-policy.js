@@ -1,4 +1,5 @@
 import {operationalCommand} from './operational-commands.js';
+import {recordCommand} from './record-commands.js';
 /** Explicitly consented, currently authorized voice policy; default deny. */
 import {normalizeRadioCodes,codeCommand} from './radio-reference.js';
 const snowflake = /^\d{15,22}$/;
@@ -35,6 +36,7 @@ export function parseVoiceCommand(transcript, wake = 'dispatch') {
   if (/^(?:10[- ]?9|repeat that|repeat the last transmission|what did you say)$/.test(command)) return {action:'repeat'};
   const status=/^(?:show me|mark me|set my status(?: to)?|i am|i'm)\s+(available|busy|en[ -]route|on[ -]scene|transporting|unavailable)$/.exec(command);
   if(status)return {action:'set_status',status:status[1].replace(/[ -]/g,'_')};
+  const record=recordCommand(command);if(record)return record;
   const assignment=/^(attach|assign|detach|clear) me (?:to|from) (?:call|incident)\s+(?:number\s+|#)?(\d{1,18})$/.exec(command);
   if(assignment)return {action:['attach','assign'].includes(assignment[1])?'attach':'detach',id:assignment[2]};
   if (/^(radio check|check in|are you there|respond|hello)\b/.test(command)) return {action:'radio_check'};
