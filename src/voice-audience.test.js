@@ -1,0 +1,4 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {audienceStatus} from './voice-audience.js';
+const human=id=>({id,user:{bot:false}});
+test('two eligible humans can both hear dispatch without exposing their identities',()=>{const status=audienceStatus({authorized_listener_ids:['responder-a','responder-b']},new Map([['a',human('responder-a')],['b',human('responder-b')],['bot',{id:'bot',user:{bot:true}}]]));assert.deepEqual(status,{connected_listeners:2,eligible_listeners:2,blocked_listeners:0,playback_ready:true});assert.doesNotMatch(JSON.stringify(status),/responder-/);});
+test('one visitor pauses shared playback and reports only anonymous counts',()=>{assert.deepEqual(audienceStatus({authorized_listener_ids:['a']},new Map([['a',human('a')],['visitor',human('visitor')]])),{connected_listeners:2,eligible_listeners:1,blocked_listeners:1,playback_ready:false});assert.equal(audienceStatus({},new Map()).playback_ready,false);});

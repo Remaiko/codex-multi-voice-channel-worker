@@ -1,4 +1,5 @@
 import {selectVoiceBot} from './bot-pool.js';
+import {audienceStatus} from './voice-audience.js';
 const id=/^\d{15,22}$/;
 export const companions=['FIRE_EMS','BCSO','SASP','LSPD','FEDERAL'];
 const labels={main:'Main CAD bot',FIRE_EMS:'Fire & EMS',BCSO:'BCSO',SASP:'SASP',LSPD:'LSPD',FEDERAL:'Federal'};
@@ -14,7 +15,7 @@ export function fleetReport({guildId,bots,routes,connections,speechReady=false})
   const bot=bots.find(b=>b.key===key),guild=bot?.client.guilds.cache.get(guildId);
   return {key,name:labels[key],application_id:bot?.client.user?.id||null,configured:!!bot,ready:!!bot?.client.isReady(),installed:!!guild,
    routes:list.filter(r=>selectVoiceBot(bots,r)?.key===key).map(r=>({channel_id:String(r.voice_channel_id),department:r.agency_code})),
-   connections:[...connections.values()].filter(c=>c.guildId===guildId&&c.botKey===key).map(c=>({channel_id:c.channelId,status:c.connection.state.status}))};
+   connections:[...connections.values()].filter(c=>c.guildId===guildId&&c.botKey===key).map(c=>({channel_id:c.channelId,status:c.connection.state.status,...audienceStatus(list.find(r=>String(r.voice_channel_id)===c.channelId),guild?.channels?.cache.get(c.channelId)?.members)}))};
  })};
 }
 export async function reconnectFleetBot({input,bots,routes,connections,inGuild,syncRoutes,voiceFor}){
@@ -32,4 +33,3 @@ export async function reconnectFleetBot({input,bots,routes,connections,inGuild,s
   return {reconnected:true,bot_key:botKey};
  });
 }
-

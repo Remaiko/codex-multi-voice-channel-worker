@@ -1,3 +1,5 @@
+import {audienceStatus} from './voice-audience.js';
+import {codeReply} from './radio-reference.js';
 import {stereoToMono} from './realtime-speech.js';
 import {createSessionSpeech} from './session-speech.js';
 import {closeVoiceWorker} from './shutdown.js';
@@ -139,6 +141,8 @@ async function replyInGuild(guildId,channelId,userId,message){
  if(!canListen(voicePolicy(routes.get(voiceRouteKey(guildId,state.channelId)),guildId),userId))return;
  const permitted=Array.isArray(r.authorized_listener_ids)?r.authorized_listener_ids.map(String):[];
  if(!permitted.includes(String(userId)))return;
+ const audience=audienceStatus(r,state.gateway.guilds.cache.get(guildId)?.channels.cache.get(channelId)?.members);
+ if(!audience.playback_ready)throw Error(audience.blocked_listeners?'Voice dispatch paused: a listener needs CAD linking, on-duty department access and voice alerts.':'No authorized listeners are present.');
  const replyText=String(message).replace(/[\x00-\x1F]/g,' ').slice(0,450);
  const synthesisStart=Date.now();const audio=await sessionSpeech.speak(replyText,lastVoiceChoice.get(guildId)||selectedDispatchVoice(process.env.ELEVENLABS_VOICE_ID,'D4xQvkd2SmpDZJ8sEwvA'),{guildId,channelId,userId});
  console.log(JSON.stringify({voiceReplyTiming:{synthesisMs:Date.now()-synthesisStart}}));
@@ -152,6 +156,7 @@ async function handleVoiceCommand(guildId,channelId,userId,text){
  cooldowns.set(key,now+2500);
  const cmd=parseVoiceCommand(text,wakePhrase);
  if(!cmd)return;
+ if(cmd.action==='code_reference')return replyInGuild(guildId,channelId,userId,codeReply(cmd.code));
  if(cmd.action==='acknowledge')return replyInGuild(guildId,channelId,userId,'Dispatch copies. Ten four.');
  if(cmd.action==='radio_check')return replyInGuild(guildId,channelId,userId,'Dispatch copies. Radio check acknowledged.');
  if(cmd.action==='repeat')return replyInGuild(guildId,channelId,userId,lastAnnouncements.get(voiceRouteKey(guildId,channelId))||'No previous dispatch message is available to repeat.');
@@ -203,7 +208,7 @@ function setupReceiver(guildId,state){
 for(const bot of bots){bot.client.on('voiceStateUpdate',()=>{clearTimeout(presenceTimer);presenceTimer=setTimeout(()=>void syncRoutes(),250);});bot.client.once('ready',()=>{console.log(JSON.stringify({service:'midnight-cad-voice-worker',ready:true,identity:bot.key}));void syncRoutes();});bot.client.on('error',()=>console.error('Discord gateway connection error',bot.key));}
 
 const server=http.createServer(async(req,res)=>{
- if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.8',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',speechInputMode:speechConfig.provider==='cad-relay'?'streaming':'batch',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
+ if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.9',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',speechInputMode:speechConfig.provider==='cad-relay'?'streaming':'batch',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
  if(!['/v1/dispatch','/v1/fleet'].includes(req.url)||req.method!=='POST')return respond(res,404,{error:'Not found'});
  if(!authorized(req))return respond(res,401,{error:'Unauthorized'});
  if(req.url==='/v1/fleet'){
@@ -222,3 +227,4 @@ await Promise.allSettled(bots.slice(1).map(async bot=>{try{await bot.client.logi
 ensureSpeechReady();
 void (async()=>{while(true){await delay(5_000);await deliver();}})();
 setInterval(()=>void syncRoutes(),30_000).unref();
+

@@ -1,4 +1,5 @@
 /** Explicitly consented, currently authorized voice policy; default deny. */
+import {normalizeRadioCodes,codeCommand} from './radio-reference.js';
 const snowflake = /^\d{15,22}$/;
 const toIds = value => new Set(Array.isArray(value) ? value.filter(id => snowflake.test(String(id))).map(String) : []);
 export function voicePolicy(route, guildId) {
@@ -21,7 +22,8 @@ export function parseVoiceCommand(transcript, wake = 'dispatch') {
   if (!/^[,.:;!?\s]/.test(suffix)) return null;
   let command = suffix.replace(/^[,.:;!?\s]+/, '').trim().toLowerCase().replace(/[’‘]/g,"'").replace(/[.!?]+$/,'');
   command=command.replace(/^please\s+/,'').replace(/^(?:can you|could you|would you)\s+/,'').replace(/^please\s+/,'').replace(/\s+please$/,'');
-  command=command.replace(/\bten[ -]+(zero|one|two|three|four|five|six|seven|eight|nine)\b/g,(_,n)=>'10-'+['zero','one','two','three','four','five','six','seven','eight','nine'].indexOf(n));
+  command=normalizeRadioCodes(command);
+  const referenceCommand=codeCommand(command);if(referenceCommand)return referenceCommand;
   if (/^(?:10[- ]?4|copy|copied|acknowledged|understood)$/.test(command)) return {action:'acknowledge'};
   if (/^(?:10[- ]?9|repeat that|repeat the last transmission|what did you say)$/.test(command)) return {action:'repeat'};
   const status=/^(?:show me|mark me|set my status(?: to)?|i am|i'm)\s+(available|busy|en[ -]route|on[ -]scene|transporting|unavailable)$/.exec(command);
