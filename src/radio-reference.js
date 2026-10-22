@@ -5,7 +5,7 @@ export const radioEntries=new Map(radioBook.sections.flatMap(section=>section.en
 const small=['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
 const tens={twenty:20,thirty:30,forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90};
 export function normalizeRadioCodes(text){
- return text.replace(/[–—]/g,'-').replace(/\b10[ -]+(\d{1,2})\b/g,(_,number)=>'10-'+Number(number)).replace(/\bten[ -]+((?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[ -]+(?:one|two|three|four|five|six|seven|eight|nine))?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\b/g,(_,words)=>{const parts=words.split(/[ -]+/);return '10-'+(tens[parts[0]]?tens[parts[0]]+(parts[1]?small.indexOf(parts[1]):0):small.indexOf(parts[0]));});
+ return text.replace(/[–—−]/g,'-').replace(/\b10[.,]\s*99\b/g,'10-99').replace(/\bten[ -]+nine[ -]+nine\b/g,'10-99').replace(/\b10[ -]+(\d{1,2})\b/g,(_,number)=>'10-'+Number(number)).replace(/\bten[ -]+((?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)(?:[ -]+(?:one|two|three|four|five|six|seven|eight|nine))?|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)\b/g,(_,words)=>{const parts=words.split(/[ -]+/);return '10-'+(tens[parts[0]]?tens[parts[0]]+(parts[1]?small.indexOf(parts[1]):0):small.indexOf(parts[0]));});
 }
 export function codeCommand(command){
  const query=/^(?:what does |what is |what's |meaning of |define )(10-\d{1,2}|signal \d{1,3}|code (?:zero|\d+|blue|red)|11-44|51-50|priority [123])(?: mean)?$/.exec(command);
