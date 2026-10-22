@@ -1,0 +1,591 @@
+{
+  "version": "2026-10-v1.6-recovered",
+  "source": {
+    "document": "ASP & Game and Fish Complete Training SOP",
+    "slug": "combined-training",
+    "appendix": "A",
+    "note": "Restored from the saved CAD student SOP. RP-only meanings; reserved codes remain unassigned. Signals 41 and 42 are retired."
+  },
+  "sections": [
+    {
+      "section": "Unified 10-code index",
+      "entries": [
+        {
+          "code": "10-0",
+          "meaning": "Disappeared",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-1",
+          "meaning": "Frequency change",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-2",
+          "meaning": "Receiving well",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-3",
+          "meaning": "Stop transmitting",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-4",
+          "meaning": "Affirmative",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-5",
+          "meaning": "Relay",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-6",
+          "meaning": "Busy",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-7",
+          "meaning": "Out of service",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-8",
+          "meaning": "In service",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-9",
+          "meaning": "Repeat",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-10",
+          "meaning": "Fight in progress",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-11",
+          "meaning": "Traffic stop",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-12",
+          "meaning": "Active ride along",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-13",
+          "meaning": "Shots fired",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-14",
+          "meaning": "Convoy or escort",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-15",
+          "meaning": "Subject in custody",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-16",
+          "meaning": "Stolen vehicle",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-17",
+          "meaning": "Suspicious person",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-18",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-19",
+          "meaning": "Return to station",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-20",
+          "meaning": "Location",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-21",
+          "meaning": "Contact via Discord",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-22",
+          "meaning": "Disregard last information",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-23",
+          "meaning": "Arrived on scene",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-24",
+          "meaning": "Traffic stop",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-25",
+          "meaning": "Domestic dispute",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-26",
+          "meaning": "ETA",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-27",
+          "meaning": "Driver license validity check",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-28",
+          "meaning": "Vehicle license plate check",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-29",
+          "meaning": "NCIC warrant check",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-30",
+          "meaning": "Wanted person",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-31",
+          "meaning": "Not wanted / no warrants",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-32",
+          "meaning": "Request backup (code 1/2/3)",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-33",
+          "meaning": "Emergency traffic",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-34",
+          "meaning": "Call coroner",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-35",
+          "meaning": "Confidential information",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-36",
+          "meaning": "Correct time",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-37",
+          "meaning": "Pursuit in progress",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-38",
+          "meaning": "Property-damage collision, road clear",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-39",
+          "meaning": "Property-damage collision, road blocked",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-40",
+          "meaning": "Injury collision, road clear",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-41",
+          "meaning": "Beginning tour of duty",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-42",
+          "meaning": "Ending tour of duty",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-43",
+          "meaning": "Information",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-44",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-45",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-46",
+          "meaning": "Livestock on highway",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-47",
+          "meaning": "Person in mental-health crisis (use respectful plain language)",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-48",
+          "meaning": "Pedestrian",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-49",
+          "meaning": "Homicide",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-50",
+          "meaning": "Vehicle accident",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-51",
+          "meaning": "Request towing service",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-52",
+          "meaning": "Request EMS",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-53",
+          "meaning": "Request fire department",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-54",
+          "meaning": "Check criminal history",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-55",
+          "meaning": "Intoxicated driver",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-56",
+          "meaning": "Intoxicated pedestrian",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-57",
+          "meaning": "Fight in progress",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-58",
+          "meaning": "Suspicious person",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-59",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-60",
+          "meaning": "Armed with gun",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-61",
+          "meaning": "Armed with knife",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-62",
+          "meaning": "Kidnapping",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-63",
+          "meaning": "Directed net",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-64",
+          "meaning": "Sexual assault",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-65",
+          "meaning": "Hit and run without injury",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-66",
+          "meaning": "Reckless driver",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-67",
+          "meaning": "Fire",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-68",
+          "meaning": "Armed robbery",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-69",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-70",
+          "meaning": "Foot pursuit",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-71",
+          "meaning": "Request supervisor at scene",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-72",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-73",
+          "meaning": "Advise status",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-74",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-75",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-76",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-77",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-78",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-79",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-80",
+          "meaning": "Vehicle pursuit",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-81",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-82",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-83",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-84",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-85",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-86",
+          "meaning": "Switch to secondary channel",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-87",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-88",
+          "meaning": "Advise contact phone number",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-89",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-90",
+          "meaning": "In-game warning",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-91",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-92",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-93",
+          "meaning": "Removed from game",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-94",
+          "meaning": "Meal or rest break",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-95",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-96",
+          "meaning": "Reserved - use plain language",
+          "basis": "Unassigned"
+        },
+        {
+          "code": "10-97",
+          "meaning": "En route",
+          "basis": "RP standard"
+        },
+        {
+          "code": "10-98",
+          "meaning": "Clear / assignment complete",
+          "basis": "Arkansas agency"
+        },
+        {
+          "code": "10-99",
+          "meaning": "Officer in distress",
+          "basis": "RP standard"
+        }
+      ]
+    },
+    {
+      "section": "Signals, operational codes and fire/rescue",
+      "entries": [
+        {
+          "code": "Signal 100",
+          "meaning": "Emergency traffic only",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "Signal 60",
+          "meaning": "Drugs",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "Signal 37",
+          "meaning": "Meet at [location]",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "Code Zero",
+          "meaning": "Game crash",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "Code 4",
+          "meaning": "Under control",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "Code 5",
+          "meaning": "Felony / high-risk stop",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "Code 6",
+          "meaning": "Investigating",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "11-44",
+          "meaning": "Person deceased",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "51-50",
+          "meaning": "Mental health evaluation",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "Code Blue",
+          "meaning": "Lost pulse (start CPR)",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "Code Red",
+          "meaning": "Activate trauma code (5-minute timer)",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "Priority 1",
+          "meaning": "Highest-priority transport",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "Priority 2",
+          "meaning": "Medium-priority transport",
+          "basis": "Unified RP standard"
+        },
+        {
+          "code": "Priority 3",
+          "meaning": "Low-priority / routine transport",
+          "basis": "Unified RP standard"
+        }
+      ]
+    }
+  ]
+}
