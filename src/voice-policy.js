@@ -16,8 +16,10 @@ export function canBroadcast(policy, presentUserIds) {
 export function parseVoiceCommand(transcript, wake = 'dispatch') {
   if (typeof transcript !== 'string') return null;
   const text = transcript.trim().replace(/\s+/g, ' ');
-  const phrase = String(wake).trim().toLowerCase();
-  if (!phrase || !text.toLowerCase().startsWith(phrase)) return null;
+  const configured = String(wake).trim().toLowerCase();
+  if (!configured) return null;
+  const phrase = [configured, 'dispatch', 'central'].find(word => text.toLowerCase().startsWith(word) && /^[,.:;!?\s]/.test(text.slice(word.length)));
+  if (!phrase) return null;
   const suffix = text.slice(phrase.length);
   if (!/^[,.:;!?\s]/.test(suffix)) return null;
   let command = suffix.replace(/^[,.:;!?\s]+/, '').trim().toLowerCase().replace(/[’‘]/g,"'").replace(/[.!?]+$/,'');
