@@ -1,9 +1,10 @@
+import {stereoToMono} from './realtime-speech.js';
 import {createSessionSpeech} from './session-speech.js';
 import {closeVoiceWorker} from './shutdown.js';
 import {voicePresence} from './voice-presence.js';
 import http from 'node:http';
 import {deliverValidated} from './delivery-validation.js';
-import {dispatchEventId,selectedDispatchVoice,assembleDispatchAudio} from './dispatch-recording.js';
+import {dispatchEventId,selectedDispatchVoice,assembleDispatchAudio,decodePcm} from './dispatch-recording.js';
 import {Readable} from 'node:stream';
 import prism from 'prism-media';
 import {timingSafeEqual,randomUUID as randomUuid} from 'node:crypto';
@@ -130,7 +131,7 @@ function wavFromPcm(pcm){
 }
 async function transcribeWav(audio,scope){return speechConfig.provider==='cad-relay'?sessionSpeech.transcribe(audio,scope):transcribeAudio({audio,config:speechConfig});}
 async function transcribe(pcm,scope){return transcribeWav(wavFromPcm(pcm),scope);}
-function ensureSpeechReady(){if(!inputEnabled||speechTestFlight||speechSelfTest==='passed')return;let scope;for(const route of routes.values()){const state=connections.get(voiceRouteKey(route.guild_id,route.voice_channel_id));const members=state?.gateway.guilds.cache.get(String(route.guild_id))?.channels.cache.get(String(route.voice_channel_id))?.members;const userId=route.voice_listen_enabled===true&&route.authorized_user_ids?.find(id=>members?.has(String(id)));if(userId){scope={guildId:String(route.guild_id),channelId:String(route.voice_channel_id),userId:String(userId)};break;}}if(!scope){speechSelfTest='waiting_for_opt_in';return;}speechSelfTest='pending';speechTestFlight=(async()=>{try{const text=await transcribeWav(await localSpeech(wakePhrase+', radio check.'),scope);if(parseVoiceCommand(text,wakePhrase)?.action!=='radio_check')throw Error('Synthetic command was not recognized.');speechSelfTest='passed';console.log(JSON.stringify({speechSelfTest:'passed',provider:speechConfig.provider}));}catch(error){speechSelfTest='failed';console.error('Synthetic speech check failed:',String(error.message||error).slice(0,140));}finally{speechTestFlight=null;}})();}
+function ensureSpeechReady(){if(!inputEnabled||speechTestFlight||speechSelfTest==='passed')return;let scope;for(const route of routes.values()){const state=connections.get(voiceRouteKey(route.guild_id,route.voice_channel_id));const members=state?.gateway.guilds.cache.get(String(route.guild_id))?.channels.cache.get(String(route.voice_channel_id))?.members;const userId=route.voice_listen_enabled===true&&route.authorized_user_ids?.find(id=>members?.has(String(id)));if(userId){scope={guildId:String(route.guild_id),channelId:String(route.voice_channel_id),userId:String(userId)};break;}}if(!scope){speechSelfTest='waiting_for_opt_in';return;}speechSelfTest='pending';speechTestFlight=(async()=>{try{const sample=await localSpeech(wakePhrase+', radio check.');let text;if(speechConfig.provider==='cad-relay'){const stream=sessionSpeech.openInput(scope);stream.write(stereoToMono(await decodePcm(sample)));text=await stream.finish();}else{text=await transcribeWav(sample,scope);}if(parseVoiceCommand(text,wakePhrase)?.action!=='radio_check')throw Error('Synthetic command was not recognized.');speechSelfTest='passed';console.log(JSON.stringify({speechSelfTest:'passed',provider:speechConfig.provider}));}catch(error){speechSelfTest='failed';console.error('Synthetic speech check failed:',String(error.message||error).slice(0,140));}finally{speechTestFlight=null;}})();}
 async function replyInGuild(guildId,channelId,userId,message){
  const state=connections.get(voiceRouteKey(guildId,channelId));
  if(!state)return;
@@ -139,7 +140,8 @@ async function replyInGuild(guildId,channelId,userId,message){
  const permitted=Array.isArray(r.authorized_listener_ids)?r.authorized_listener_ids.map(String):[];
  if(!permitted.includes(String(userId)))return;
  const replyText=String(message).replace(/[\x00-\x1F]/g,' ').slice(0,450);
- const audio=await sessionSpeech.speak(replyText,lastVoiceChoice.get(guildId)||selectedDispatchVoice(process.env.ELEVENLABS_VOICE_ID,'D4xQvkd2SmpDZJ8sEwvA'),{guildId,channelId,userId});
+ const synthesisStart=Date.now();const audio=await sessionSpeech.speak(replyText,lastVoiceChoice.get(guildId)||selectedDispatchVoice(process.env.ELEVENLABS_VOICE_ID,'D4xQvkd2SmpDZJ8sEwvA'),{guildId,channelId,userId});
+ console.log(JSON.stringify({voiceReplyTiming:{synthesisMs:Date.now()-synthesisStart}}));
  await play({guildId,agencyCode:r.agency_code,eventId:String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),voiceChannelId:r.voice_channel_id,authorizedUserIds:permitted,audioBase64:audio.toString('base64')});
 }
 async function handleVoiceCommand(guildId,channelId,userId,text){
@@ -179,27 +181,29 @@ function setupReceiver(guildId,state){
   const channel=await state.gateway.guilds.cache.get(guildId)?.channels.fetch(state.channelId).catch(()=>null);
   const member=channel?.members?.get(userId);
   if(!member||member.user.bot||!canListen(voicePolicy(routes.get(routeKey),guildId),userId))return;
-  receiving.add(key);
+  receiving.add(key);let inputStream;
   try{
-   const opus=receiver.subscribe(userId,{end:{behavior:EndBehaviorType.AfterSilence,duration:950}});
+   const opus=receiver.subscribe(userId,{end:{behavior:EndBehaviorType.AfterSilence,duration:650}});
    const decoder=new prism.opus.Decoder({frameSize:960,channels:2,rate:48000});
-   const pcm=[],cap=48000*2*2*12;let size=0;
+   const pcm=[],cap=48000*2*2*12;let size=0;const captureStart=Date.now(),stream=inputStream=speechConfig.provider==='cad-relay'?sessionSpeech.openInput({guildId,channelId:state.channelId,userId}):null;
    opus.pipe(decoder);
    for await(const part of decoder){
-    size+=part.length;if(size>cap){opus.destroy();break;}pcm.push(part);
+    size+=part.length;if(size>cap||connections.get(routeKey)!==state||!canListen(voicePolicy(routes.get(routeKey),guildId),userId)){stream?.cancel();opus.destroy();break;}if(stream)stream.write(stereoToMono(part));else pcm.push(part);
    }
-   if(connections.get(routeKey)!==state||size<48000*2*2*0.4||size>cap||!canListen(voicePolicy(routes.get(routeKey),guildId),userId))return;
-   const transcript=await transcribe(Buffer.concat(pcm),{guildId,channelId:state.channelId,userId});
+   if(connections.get(routeKey)!==state||size<48000*2*2*0.4||size>cap||!canListen(voicePolicy(routes.get(routeKey),guildId),userId)){stream?.cancel();return;}
+   const captureMs=Date.now()-captureStart,recognitionStart=Date.now();
+   const transcript=stream?await stream.finish():await transcribe(Buffer.concat(pcm),{guildId,channelId:state.channelId,userId});
+   console.log(JSON.stringify({voiceInputTiming:{captureMs,recognitionMs:Date.now()-recognitionStart,recognizedAction:parseVoiceCommand(transcript,wakePhrase)?.action||'none'}}));
    if(transcript)await handleVoiceCommand(guildId,state.channelId,userId,transcript);
   }catch(e){console.warn('Speech input could not be handled:',String(e.message||e).slice(0,140))}
-  finally{receiving.delete(key)}
+  finally{inputStream?.cancel();receiving.delete(key)}
  });
 }
 
 for(const bot of bots){bot.client.on('voiceStateUpdate',()=>{clearTimeout(presenceTimer);presenceTimer=setTimeout(()=>void syncRoutes(),250);});bot.client.once('ready',()=>{console.log(JSON.stringify({service:'midnight-cad-voice-worker',ready:true,identity:bot.key}));void syncRoutes();});bot.client.on('error',()=>console.error('Discord gateway connection error',bot.key));}
 
 const server=http.createServer(async(req,res)=>{
- if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.7',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
+ if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.8',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',speechInputMode:speechConfig.provider==='cad-relay'?'streaming':'batch',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
  if(!['/v1/dispatch','/v1/fleet'].includes(req.url)||req.method!=='POST')return respond(res,404,{error:'Not found'});
  if(!authorized(req))return respond(res,401,{error:'Unauthorized'});
  if(req.url==='/v1/fleet'){
