@@ -241,7 +241,7 @@ const server=http.createServer(async(req,res)=>{
   try{const input=await readJson(req),{guildId}=fleetInput(input);if(!client.guilds.cache.has(guildId))return respond(res,404,{error:'Main CAD bot is not installed in this server.'});
    if(input.action==='reconnect')await reconnectFleetBot({input,bots,routes,connections,inGuild,syncRoutes,voiceFor});
    const branding=input.action==='branding'?await applyFleetBranding({guildId,botKey:input.bot_key,bots}):null;
-   return respond(res,200,{...fleetReport({guildId,bots,routes,connections,speechReady:speechSelfTest==='passed'})),...(branding?{branding}:{} )});
+   return respond(res,200,{...fleetReport({guildId,bots,routes,connections,speechReady:speechSelfTest==='passed'}),...(branding?{branding}:{})});
   }catch(e){return respond(res,400,{error:String(e.message||'Fleet control failed').slice(0,180)});}
  }
  try{return respond(res,200,await play(await readJson(req)));}catch(e){return respond(res,400,{error:String(e.message||'Voice dispatch failed').slice(0,180)});}
