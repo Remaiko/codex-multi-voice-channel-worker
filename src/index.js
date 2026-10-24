@@ -8,6 +8,7 @@ import {createSessionSpeech} from './session-speech.js';
 import {closeVoiceWorker} from './shutdown.js';
 import {voicePresence} from './voice-presence.js';
 import http from 'node:http';
+import workerPackage from '../package.json' with {type:'json'};
 import {deliverValidated} from './delivery-validation.js';
 import {dispatchEventId,selectedDispatchVoice,assembleDispatchAudio,decodePcm} from './dispatch-recording.js';
 import {Readable} from 'node:stream';
@@ -234,7 +235,7 @@ function setupReceiver(guildId,state){
 for(const bot of bots){bot.client.on('voiceStateUpdate',()=>{clearTimeout(presenceTimer);presenceTimer=setTimeout(()=>void syncRoutes(),250);});bot.client.once('ready',()=>{console.log(JSON.stringify({service:'midnight-cad-voice-worker',ready:true,identity:bot.key}));void syncRoutes();});bot.client.on('error',()=>console.error('Discord gateway connection error',bot.key));}
 
 const server=http.createServer(async(req,res)=>{
- if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:'0.6.16',configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',speechInputMode:speechConfig.provider==='cad-relay'?'streaming':'batch',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
+ if(req.url==='/health'&&req.method==='GET')return respond(res,200,{service:'Midnight CAD voice worker',version:workerPackage.version,configuredBotIdentities:bots.length,readyBotIdentities:bots.filter(b=>b.client.isReady()).length,routeSyncHealthy:Date.now()-lastRouteSyncAt<90000,eventPollingHealthy:Date.now()-lastEventPollAt<45000,ready:client.isReady(),speechOutputProvider:'cad-selected-voice',speechProvider:speechConfig.provider,requestedSpeechProvider:process.env.VOICE_STT_PROVIDER||'auto',speechSelfTest,speechRecognitionReady:speechSelfTest==='passed',speechRecognitionCredentialConfigured:Boolean(speechConfig.apiKey),speechSessionRelay:speechConfig.provider==='cad-relay',speechInputMode:speechConfig.provider==='cad-relay'?'streaming':'batch',voiceInputRequested:process.env.VOICE_INPUT_ENABLED==='true',cadCommandsEnabled:Boolean(cadCommandUrl),connectedGuilds:new Set([...connections.values()].map(s=>s.guildId)).size,connectedVoiceChannels:connections.size,voiceInputConfigured:inputEnabled,enabledVoiceRoutes:[...routes.values()].filter(r=>r.voice_listen_enabled===true).length});
  if(!['/v1/dispatch','/v1/fleet'].includes(req.url)||req.method!=='POST')return respond(res,404,{error:'Not found'});
  if(!authorized(req))return respond(res,401,{error:'Unauthorized'});
  if(req.url==='/v1/fleet'){
