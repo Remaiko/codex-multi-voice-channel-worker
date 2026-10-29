@@ -11,6 +11,9 @@ import {createPresencePublisher,createPresenceRouteSync} from './presence-sync.j
 import http from 'node:http';
 import workerPackage from '../package.json' with {type:'json'};
 import {deliverValidated} from './delivery-validation.js';
+import {rememberTransmission,repeatTransmission} from './repeat-delivery.js';
+import {deliverAudienceBound} from './delivery-audience.js';
+import {createDispatchAgent} from './dispatch-agent.js';
 import {dispatchEventId,selectedDispatchVoice,assembleDispatchAudio,decodePcm} from './dispatch-recording.js';
 import {Readable} from 'node:stream';
 import prism from 'prism-media';
@@ -97,7 +100,14 @@ async function playDelivery(req){
  const listeners=[...voiceChannel.members.values()].filter(member=>!member.user.bot);
  if(listeners.length===0)throw Error('No opted-in responders are present in the voice channel.');
  if(listeners.some(member=>!authorized.has(member.id)))throw Error('Voice dispatch paused: an unauthorized listener is in the channel.');
- state.tail=state.tail.catch(()=>{}).then(()=>playToAudience({player:state.player,gateway:state.gateway,channel:voiceChannel,resource:createAudioResource(Readable.from(audio),{inputType:req.audioFormat==='pcm'?StreamType.Raw:StreamType.Arbitrary}),guildId,channelId:voiceChannelId,authorized,idleEvent:AudioPlayerStatus.Idle}));
+ state.tail=state.tail.catch(()=>{}).then(async()=>{
+  if(typeof req.authorizeForPlayback==='function'){
+   const current=await req.authorizeForPlayback();
+   if(!Array.isArray(current)||!current.length||current.length>100||current.some(id=>typeof id!=='string'||!/^\d{15,22}$/.test(id)))throw Error('Voice authorization changed while waiting for playback.');
+   authorized.clear();for(const id of current)authorized.add(id);
+  }
+  return playToAudience({player:state.player,gateway:state.gateway,channel:voiceChannel,resource:createAudioResource(Readable.from(audio),{inputType:req.audioFormat==='pcm'?StreamType.Raw:StreamType.Arbitrary}),guildId,channelId:voiceChannelId,authorized,idleEvent:AudioPlayerStatus.Idle});
+ });
  await state.tail;recent.set(key,Date.now());for(const [k,t] of recent)if(Date.now()-t>15*60_000)recent.delete(k);
  return {played:true,guildId,agencyCode};
 }
@@ -111,9 +121,9 @@ async function say(text,voiceId){
  }
  return localSpeech(text);
 }
-async function sayDelivery(delivery,text){
+async function sayDelivery(delivery,text,{notice=false}={}){
  const pcm=await prepareRadioSpeech(text,{decode:decodePcm,speak:async segment=>{
- const response=await fetch(controlUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action:'speech',id:delivery.id,text:segment}),signal:AbortSignal.timeout(45000)});
+ const response=await fetch(controlUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action:'speech',id:delivery.id,text:segment,notice:notice===true}),signal:AbortSignal.timeout(45000)});
  if(!response.ok)throw Error('Selected dispatch voice unavailable ('+response.status+').');
  const audio=Buffer.from(await response.arrayBuffer());if(audio.length<100||audio.length>4000000)throw Error('Invalid dispatch speech recording.');return audio;
  }});return wavFromPcm(pcm);
@@ -124,7 +134,7 @@ const presencePublisher=createPresencePublisher();
 const syncRoutes=createPresenceRouteSync({capture:()=>voicePresence(connections,bots),refresh:syncRoutesOnce,after:()=>ensureSpeechReady(),active:()=>!shuttingDown});
 async function syncRoutesOnce(presence){const publication=presencePublisher.request(presence);try{const response=await fetch(voiceRouteUrl,{method:'POST',headers:{Authorization:`Bearer ${workerKey}`,'Content-Type':'application/json'},body:JSON.stringify({action:'routes',...publication.payload}),signal:AbortSignal.timeout(15000)});if(!response.ok)throw Error('Voice routes endpoint rejected request ('+response.status+')');const data=await response.json();if(!Array.isArray(data.routes))throw Error('Invalid routes payload');publication.acknowledge();const wanted=new Map(flattenVoiceRoutes(data.routes).map(r=>[voiceRouteKey(String(r.guild_id),r.voice_channel_id),r]));for(const [key,state] of connections){if((!wanted.has(key)||routeBot(wanted.get(key)).key!==state.botKey)){state.connection.destroy();connections.delete(key);}}routes.clear();for(const [key,r] of wanted)routes.set(key,r);lastRouteSyncAt=Date.now();for(const r of idleVoiceRoutes()){try{await inGuild(queueKey(r.guild_id,r.voice_channel_id),()=>{const chosen=idleVoiceRoutes().find(x=>String(x.guild_id)===String(r.guild_id)&&routeBot(x).key===routeBot(r).key);return chosen?voiceFor(String(chosen.guild_id),chosen.voice_channel_id):undefined;});}catch(e){console.error('Voice route unavailable',voiceRouteKey(r.guild_id,r.voice_channel_id),String(e.message||e));}}}catch(e){console.error('Voice route sync failed',String(e.message||e));}}
 async function preflightAudience(delivery,verified){const guildId=String(delivery.guild_id),channelId=String(delivery.voice_channel_id);routeFor(guildId,delivery.agency_code,channelId);const state=await voiceFor(guildId,channelId);const channel=await state.gateway.guilds.cache.get(guildId).channels.fetch(channelId);const ids=[...channel.members.values()].filter(m=>!m.user.bot).map(m=>String(m.id));if(!ids.length)throw Error('No opted-in responders are present in the voice channel.');const allowed=new Set((verified.authorized_user_ids||[]).map(String));if(!ids.every(id=>allowed.has(id)))throw Error('Voice dispatch paused: an unauthorized listener is in the channel.');}
-async function deliver(){if(shuttingDown)return;try{const {deliveries=[]}=await control('claim');lastEventPollAt=Date.now();await Promise.all(deliveries.map(async d=>{try{if(selectedDispatchVoice(d.voice_id))lastVoiceChoice.set(String(d.guild_id),selectedDispatchVoice(d.voice_id));const result=await deliverValidated(d,{validate:id=>control('validate',{id}),checkAudience:preflightAudience,makeSpeech,makeOpening:dispatchOpening,say:text=>sayDelivery(d,text),assemble:assembleDispatchAudio,play});if(!result.played){await control('ack',{id:d.id,ok:false,error:'delivery_no_longer_active',retry_seconds:60});return;}lastAnnouncements.set(voiceRouteKey(String(d.guild_id),String(d.voice_channel_id)),result.speech);await control('ack',{id:d.id,ok:true});console.log('Voice dispatch delivered',String(d.id),String(d.voice_channel_id));}catch(e){await control('ack',{id:d.id,ok:false,error:String(e.message||'voice_failed').slice(0,80),retry_seconds:60}).catch(()=>{});console.error('Voice dispatch failed',String(d.id),String(e.message||e));}}));}catch(e){console.error('Voice event poll failed',String(e.message||e));}}
+async function deliver(){if(shuttingDown)return;try{const {deliveries=[]}=await control('claim');lastEventPollAt=Date.now();await Promise.all(deliveries.map(async d=>{try{if(selectedDispatchVoice(d.voice_id))lastVoiceChoice.set(String(d.guild_id),selectedDispatchVoice(d.voice_id));const result=await deliverAudienceBound(d,{plan:id=>control('delivery_plan',{id}),audience:()=>currentDeliveryAudience(d),makeSpeech,makeOpening:dispatchOpening,say:(text,voice,notice)=>sayDelivery(d,text,{notice}),assemble:assembleDispatchAudio,decode:decodePcm,play});if(!result.played){await control('ack',{id:d.id,ok:false,error:'delivery_no_longer_active',retry_seconds:60});return;}rememberTransmission(lastAnnouncements,d,result);await control('ack',{id:d.id,ok:true});console.log('Voice dispatch delivered',String(d.id),String(d.voice_channel_id));}catch(e){await control('ack',{id:d.id,ok:false,error:String(e.message||'voice_failed').slice(0,80),retry_seconds:60}).catch(()=>{});console.error('Voice dispatch failed',String(d.id),String(e.message||e));}}));}catch(e){console.error('Voice event poll failed',String(e.message||e));}}
 
 
 // v43.30 optional receive pipeline. Explicit opt-in must be recorded by the CAD route
@@ -144,7 +154,7 @@ function wavFromPcm(pcm){
 async function transcribeWav(audio,scope){return speechConfig.provider==='cad-relay'?sessionSpeech.transcribe(audio,scope):transcribeAudio({audio,config:speechConfig});}
 async function transcribe(pcm,scope){return transcribeWav(wavFromPcm(pcm),scope);}
 function ensureSpeechReady(){if(!inputEnabled||speechTestFlight||speechSelfTest==='passed')return;let scope;for(const route of routes.values()){const state=connections.get(voiceRouteKey(route.guild_id,route.voice_channel_id));const members=state?.gateway.guilds.cache.get(String(route.guild_id))?.channels.cache.get(String(route.voice_channel_id))?.members;const userId=route.voice_listen_enabled===true&&route.authorized_user_ids?.find(id=>members?.has(String(id)));if(userId){scope={guildId:String(route.guild_id),channelId:String(route.voice_channel_id),userId:String(userId)};break;}}if(!scope){speechSelfTest='waiting_for_opt_in';return;}speechSelfTest='pending';speechTestFlight=(async()=>{try{const sample=await localSpeech(wakePhrase+', radio check.');let text;if(speechConfig.provider==='cad-relay'){const stream=sessionSpeech.openInput(scope);stream.write(stereoToMono(await decodePcm(sample)));text=await stream.finish();}else{text=await transcribeWav(sample,scope);}if(parseVoiceCommand(text,wakePhrase)?.action!=='radio_check')throw Error('Synthetic command was not recognized.');speechSelfTest='passed';console.log(JSON.stringify({speechSelfTest:'passed',provider:speechConfig.provider}));}catch(error){speechSelfTest='failed';console.error('Synthetic speech check failed:',String(error.message||error).slice(0,140));}finally{speechTestFlight=null;}})();}
-async function replyInGuild(guildId,channelId,userId,message){
+async function replyInGuild(guildId,channelId,userId,message,expectedScopeTag=null){
  const state=connections.get(voiceRouteKey(guildId,channelId));
  if(!state)return;
  const r=routeFor(guildId,routes.get(voiceRouteKey(guildId,state.channelId))?.agency_code||'ALL',state.channelId);
@@ -154,56 +164,73 @@ async function replyInGuild(guildId,channelId,userId,message){
  const audience=audienceStatus(r,state.gateway.guilds.cache.get(guildId)?.channels.cache.get(channelId)?.members);
  if(!audience.playback_ready)throw Error(audience.blocked_listeners?'Voice dispatch paused: a listener needs CAD linking, on-duty department access and voice alerts.':'No authorized listeners are present.');
  const replyText=String(message).replace(/[\x00-\x1F]/g,' ');
+ const replyScope={guildId,channelId,userId};let replyTag=expectedScopeTag;
+ const verifyReplyScope=async()=>{const current=await sessionSpeech.scope(replyScope);if(current?.allowed!==true||!/^[a-f0-9]{64}$/.test(current.scope_tag||''))throw Error('VOICE_SCOPE_REVOKED');if(replyTag&&replyTag!==current.scope_tag)throw Error('VOICE_IDENTITY_CHANGED');replyTag=current.scope_tag;};
+ await verifyReplyScope();
+
  const voice=lastVoiceChoice.get(guildId)||selectedDispatchVoice(process.env.ELEVENLABS_VOICE_ID,'D4xQvkd2SmpDZJ8sEwvA');
  const synthesisStart=Date.now();const audio=await prepareRadioSpeech(replyText,{decode:decodePcm,speak:segment=>sessionSpeech.speak(segment,voice,{guildId,channelId,userId})});
  console.log(JSON.stringify({voiceReplyTiming:{synthesisMs:Date.now()-synthesisStart}}));
- await play({guildId,agencyCode:r.agency_code,eventId:String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),voiceChannelId:r.voice_channel_id,authorizedUserIds:permitted,audioFormat:'pcm',audioBase64:audio.toString('base64')});
+ await play({guildId,agencyCode:r.agency_code,eventId:String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),voiceChannelId:r.voice_channel_id,authorizedUserIds:permitted,audioFormat:'pcm',audioBase64:audio.toString('base64'),authorizeForPlayback:async()=>{await verifyReplyScope();const latest=routes.get(voiceRouteKey(guildId,channelId));if(!canListen(voicePolicy(latest,guildId),userId))throw Error('VOICE_SCOPE_REVOKED');const current=new Set((latest?.authorized_listener_ids||[]).map(String));const intersection=permitted.filter(id=>current.has(id));if(!intersection.includes(String(userId)))throw Error('VOICE_SCOPE_REVOKED');return intersection;}});
 }
-const radioConversations=new Map();
-async function handleVoiceCommand(guildId,channelId,userId,text){
- const route=routes.get(voiceRouteKey(guildId,channelId)),policy=voicePolicy(route,guildId);
- if(!canListen(policy,userId))return;
- const now=Date.now(),key=voiceRouteKey(guildId,channelId)+':'+userId;
- if((cooldowns.get(key)||0)>now)return;
- cooldowns.set(key,now+2500);
- let cmd=parseVoiceCommand(text,wakePhrase);
- if(!cmd)return;
- if(cmd.action==='unrecognized'){
-  const previous=radioConversations.get(key),history=previous&&now-previous.at<300000?previous.messages:[];
-  try{
-   const intent=await sessionSpeech.interpret(String(text).slice(0,700),history,{guildId,channelId,userId});
-   if(!intent||!['reply','status','calls','units','call','set_status','attach','detach','duress','trace','trace_advance','close_call','run_name','run_plate','set_location'].includes(intent.action))throw Error('Invalid conversation intent');
-   if(['run_name','run_plate','set_location'].includes(intent.action)&&(typeof intent.query!=='string'||intent.query.length<2||intent.query.length>100))throw Error('Invalid radio record query');
-   if(intent.action==='set_status'&&!['available','busy','en_route','on_scene','transporting','unavailable'].includes(intent.status))throw Error('Invalid conversation status');
-   if((['attach','detach'].includes(intent.action)||(['call','trace','trace_advance','close_call'].includes(intent.action)&&intent.id!=null))&&!/^\d{1,18}$/.test(intent.id||''))throw Error('Invalid conversation call');
-   if(!operationalIntentAllowed(intent,text))return replyInGuild(guildId,channelId,userId,'Central needs an explicit own-unit duress request, or an assigned incident and caller to investigate. I cannot trace an arbitrary person.');
-   if(intent.action==='reply'){
-    if(typeof intent.reply!=='string'||!intent.reply.trim()||intent.reply.length>450)throw Error('Invalid conversation reply');
-    radioConversations.set(key,{at:now,messages:[...history,{role:'user',content:String(text).slice(0,700)},{role:'assistant',content:intent.reply}].slice(-4)});if(radioConversations.size>200)radioConversations.delete(radioConversations.keys().next().value);
-    return replyInGuild(guildId,channelId,userId,intent.reply);
-   }
-   radioConversations.delete(key);cmd=intent;
-  }catch{return replyInGuild(guildId,channelId,userId,'Central received. Conversational dispatch is temporarily unavailable. Standard radio commands are still active.');}
- }
- if(cmd.action==='code_reference')return replyInGuild(guildId,channelId,userId,codeReply(cmd.code));
- if(cmd.action==='acknowledge')return replyInGuild(guildId,channelId,userId,'Dispatch copies. Ten four.');
- if(cmd.action==='radio_check')return replyInGuild(guildId,channelId,userId,'Dispatch copies. Radio check acknowledged.');
- if(cmd.action==='repeat')return replyInGuild(guildId,channelId,userId,lastAnnouncements.get(voiceRouteKey(guildId,channelId))||'No previous dispatch message is available to repeat.');
- // The response is authorized by the CAD server using the Guild/Discord user link.
- // Do not pass through or trust caller-supplied user roles or account identifiers.
- if(!cadCommandUrl)return replyInGuild(guildId,channelId,userId,'Dispatch copies. CAD voice lookup is not configured.');
- if(!['status','calls','units','call','set_status','attach','detach','duress','trace','trace_advance','close_call','run_name','run_plate','set_location'].includes(cmd.action))return replyInGuild(guildId,channelId,userId,'Dispatch received. That voice command is not yet enabled in CAD.');
+// A repeat is a fresh authorization, not a replay to everybody currently on the route.
+async function repeatLastDispatch(guildId,channelId,userId){
  try{
+  const result=await repeatTransmission({
+   entry:lastAnnouncements.get(voiceRouteKey(guildId,channelId)),guildId,channelId,userId,
+   validate:id=>control('repeat_validate',{id}),
+   audience:async()=>{
+    const state=connections.get(voiceRouteKey(guildId,channelId));
+    if(!state)return [];
+    const channel=await state.gateway.guilds.cache.get(guildId)?.channels.fetch(channelId);
+    return [...(channel?.members?.values()||[])].filter(member=>!member.user.bot).map(member=>String(member.id));
+   },
+   synthesize:(text,voice)=>prepareRadioSpeech(text,{decode:decodePcm,
+    speak:segment=>sessionSpeech.speak(segment,voice,{guildId,channelId,userId})}),
+   isVoiceApproved:voice=>selectedDispatchVoice(voice)===voice,
+   playbackId:()=>String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),
+   play
+  });
+  if(result.played)return;
+ }catch(error){console.warn('Dispatch repeat unavailable; fresh authority or audio could not be confirmed.');}
+ // This generic response contains no cached incident data. Existing input/room checks remain.
+ return replyInGuild(guildId,channelId,userId,'No previous transmission is currently authorized for everyone in this channel.');
+}
+
+// Capture the actual current humans after resolving this existing configured department route.
+async function currentDeliveryAudience(delivery){
+ const guildId=String(delivery.guild_id),channelId=String(delivery.voice_channel_id);
+ routeFor(guildId,delivery.agency_code,channelId);
+ const state=await voiceFor(guildId,channelId);
+ const channel=await state.gateway.guilds.cache.get(guildId)?.channels.fetch(channelId);
+ return [...(channel?.members?.values()||[])].filter(member=>!member.user.bot).map(member=>String(member.id));
+}
+
+const dispatchAgent=createDispatchAgent({
+ scope:scope=>sessionSpeech.scope(scope),
+ interpret:(text,history,scope)=>sessionSpeech.interpret(text,history,scope),
+ isActive:scope=>{
+  const routeKey=voiceRouteKey(scope.guildId,scope.channelId),state=connections.get(routeKey);
+  const present=state?.gateway.guilds.cache.get(scope.guildId)?.channels.cache.get(scope.channelId)?.members;
+  return !!state&&present?.has(scope.userId)===true&&canListen(voicePolicy(routes.get(routeKey),scope.guildId),scope.userId);
+ },
+ reply:(scope,text,tag)=>replyInGuild(scope.guildId,scope.channelId,scope.userId,text,tag),
+ repeat:scope=>repeatLastDispatch(scope.guildId,scope.channelId,scope.userId),
+ execute:async(scope,command,requestId,scopeTag)=>{
+  if(!cadCommandUrl)throw Object.assign(Error('CAD command endpoint unavailable'),{definitive:true});
   const target=new URL(cadCommandUrl);
-  if(target.protocol!=='https:'||target.origin!==new URL(controlUrl).origin)throw Error('Voice command endpoint must match trusted CAD origin');
-  const response=await fetch(target,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+workerKey},body:JSON.stringify({guild_id:guildId,channel_id:channelId,user_id:userId,action:'command',source:'discord-voice',command:voiceCommandText(cmd),request_id:cryptoRandomId()}),signal:AbortSignal.timeout(12000)});
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok)throw Error(String(data.error||'CAD radio lookup unavailable').slice(0,120));
-  const speech=typeof data.reply==='string'?data.reply:describeVoiceResult(cmd,data.data);
-  return replyInGuild(guildId,channelId,userId,speech);
- }catch(e){console.warn('CAD voice command error:',String(e.message||e).slice(0,90));return replyInGuild(guildId,channelId,userId,'Dispatch copies. CAD lookup is unavailable. Try again later.');}
+  if(target.protocol!=='https:'||target.origin!==new URL(controlUrl).origin)throw Object.assign(Error('Untrusted CAD command origin'),{definitive:true});
+  const response=await fetch(target,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+workerKey},body:JSON.stringify({guild_id:scope.guildId,channel_id:scope.channelId,user_id:scope.userId,action:'command',source:'discord-voice',command,request_id:requestId,scope_tag:scopeTag}),signal:AbortSignal.timeout(12000)});
+  const result=await response.json().catch(()=>null);
+  if(!response.ok)throw Object.assign(Error('CAD action not confirmed'),{definitive:response.status>=400&&response.status<500&&result?.definitive===true});
+  return result;
+ },wake:wakePhrase
+});
+async function handleVoiceCommand(guildId,channelId,userId,text){
+ return dispatchAgent.handle({guildId:String(guildId),channelId:String(channelId),userId:String(userId)},text);
 }
 function cryptoRandomId(){return randomUuid()}
+
 function setupReceiver(guildId,state){
  const receiver=state.connection.receiver;
  if(!receiver)return;
