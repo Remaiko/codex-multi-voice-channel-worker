@@ -1,11 +1,26 @@
-/** One bot voice session per guild. Other guilds remain independent. */
+/** One transmission per route key. Ready callouts precede waiting routine
+ * traffic; the active transmission always finishes. Equal priority stays FIFO.
+ * Callers own authorization and must recheck it when their task actually runs.
+ */
 export function createGuildQueue(){
- const tails=new Map();
- return function run(guildId,task){
-  const key=String(guildId),previous=tails.get(key)||Promise.resolve();
-  const current=previous.catch(()=>{}).then(task);tails.set(key,current);
-  const clear=()=>{if(tails.get(key)===current)tails.delete(key);};
-  current.then(clear,clear);return current;
+ const routes=new Map();let sequence=0;
+ return function run(routeId,task,{priority=0}={}){
+  if(typeof task!=='function'||!Number.isInteger(priority)||priority<0||priority>2)return Promise.reject(Error('Invalid voice queue task.'));
+  const key=String(routeId);let state=routes.get(key);
+  if(!state){state={active:false,scheduled:false,waiting:[]};routes.set(key,state);}
+  function pump(){
+   state.scheduled=false;
+   if(state.active)return;
+   const next=state.waiting.shift();
+   if(!next){if(routes.get(key)===state)routes.delete(key);return;}
+   state.active=true;
+   const finish=()=>{state.active=false;pump();};
+   Promise.resolve().then(next.task).then(value=>{next.resolve(value);finish();},error=>{next.reject(error);finish();});
+  }
+  const current=new Promise((resolve,reject)=>{state.waiting.push({task,priority,sequence:sequence++,resolve,reject});});
+  state.waiting.sort((a,b)=>b.priority-a.priority||a.sequence-b.sequence);
+  if(!state.active&&!state.scheduled){state.scheduled=true;queueMicrotask(pump);}
+  return current;
  };
 }
 export function idleRoutes(routes,connections,botFor=()=> 'main'){
