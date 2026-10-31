@@ -2,12 +2,12 @@
 /* Shared server/worker language contract. The supplied CAD codebook, not a generic
  * police-code list, owns meanings. Recognition never writes to CAD. */
 const STATUS = Object.freeze(['available','busy','en_route','on_scene','transporting','unavailable']);
-const TOOLS = Object.freeze(['status','calls','units','location','call','caller_card','caller_thread','call_resources','response_plan','set_status','attach','detach','duress','officer_down','clear_duress','trace','trace_advance','close_call','run_name','run_plate','run_dl','run_vin','run_person_record','set_location','request_backup','request_supervisor','request_fire','request_ems','request_tow','request_coroner','request_traffic_control','request_scene_security','request_transport','request_investigate','request_emergency_traffic','request_secondary_channel','add_note','caller_contact','dispatch_best','auto_services','set_response_plan','assign_unit','detach_unit','update_service','cancel_resource','dispatch_update','caller_update','broadcast_call','create_call','unit_update','go_off_duty']);
-const WRITES = new Set(['set_status','attach','detach','duress','officer_down','clear_duress','trace','trace_advance','close_call','set_location','request_backup','request_supervisor','request_fire','request_ems','request_tow','request_coroner','request_traffic_control','request_scene_security','request_transport','request_investigate','request_emergency_traffic','request_secondary_channel','add_note','caller_contact','dispatch_best','auto_services','set_response_plan','assign_unit','detach_unit','update_service','cancel_resource','dispatch_update','caller_update','broadcast_call','create_call','unit_update','go_off_duty']);
+const TOOLS = Object.freeze(['status','calls','units','location','call','caller_card','caller_thread','call_resources','response_plan','set_status','attach','detach','duress','officer_down','clear_duress','trace','trace_advance','close_call','run_name','run_plate','run_dl','run_vin','run_person_record','set_location','request_backup','request_supervisor','request_fire','request_ems','request_tow','request_coroner','request_traffic_control','request_scene_security','request_transport','request_investigate','request_emergency_traffic','request_secondary_channel','add_note','caller_contact','dispatch_best','auto_services','set_response_plan','assign_unit','detach_unit','update_service','cancel_resource','dispatch_update','caller_update','broadcast_call','create_call','unit_update','go_off_duty','patrol_activity']);
+const WRITES = new Set(['set_status','attach','detach','duress','officer_down','clear_duress','trace','trace_advance','close_call','set_location','request_backup','request_supervisor','request_fire','request_ems','request_tow','request_coroner','request_traffic_control','request_scene_security','request_transport','request_investigate','request_emergency_traffic','request_secondary_channel','add_note','caller_contact','dispatch_best','auto_services','set_response_plan','assign_unit','detach_unit','update_service','cancel_resource','dispatch_update','caller_update','broadcast_call','create_call','unit_update','go_off_duty','patrol_activity']);
 const RESOURCE_TOOLS = new Set(['request_backup','request_supervisor','request_fire','request_ems','request_tow','request_coroner','request_traffic_control','request_scene_security','request_transport','request_investigate','request_emergency_traffic','request_secondary_channel']);
 const CALL_TOOLS = new Set(['call','caller_card','caller_thread','call_resources','response_plan','attach','detach','trace','trace_advance','close_call','add_note','caller_contact','dispatch_best','auto_services','set_response_plan','assign_unit','detach_unit','update_service','cancel_resource','dispatch_update','caller_update','broadcast_call','unit_update',...RESOURCE_TOOLS]);
 const REQUIRED_CALL_TOOLS = new Set(['caller_card','caller_thread','call_resources','response_plan','attach','detach','add_note','caller_contact','dispatch_best','auto_services','set_response_plan','assign_unit','detach_unit','update_service','cancel_resource','dispatch_update','caller_update','broadcast_call','unit_update',...RESOURCE_TOOLS]);
-const QUERY_TOOLS = new Set(['run_name','run_plate','run_dl','run_vin','run_person_record','set_location','add_note','caller_contact','set_response_plan','assign_unit','detach_unit','update_service','cancel_resource','dispatch_update','caller_update','broadcast_call','create_call','unit_update']);
+const QUERY_TOOLS = new Set(['run_name','run_plate','run_dl','run_vin','run_person_record','set_location','add_note','caller_contact','set_response_plan','assign_unit','detach_unit','update_service','cancel_resource','dispatch_update','caller_update','broadcast_call','create_call','unit_update','patrol_activity']);
 const SMALL = 'zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen'.split(' ');
 const TENS = {twenty:20,thirty:30,forty:40,fourty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90};
 const DIGITS = Object.fromEntries(SMALL.slice(0,10).map((s,i)=>[s,String(i)]));Object.assign(DIGITS,{oh:'0',o:'0',niner:'9'});
@@ -54,7 +54,7 @@ function plateQuery(value){
  return null; // Do not guess a plate from partly recognized spelling.
 }
 function locationQuery(value){
- const s=clean(value).replace(/\bpostal(?: code)?\s+((?:zero|oh|one|two|three|four|five|six|seven|eight|nine|niner)(?:[ -]+(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|niner)){1,7})\b/ig,(_,n)=>'postal '+wordsNumber(n,{digits:true}));
+ const s=clean(value).replace(/[?!.]+$/,'').replace(/\b(?:postal(?: code)?|post code)\s+([a-z -]+)$/i,(all,spoken)=>{const n=wordsNumber(spoken);return n===null?all:'postal '+n;}).replace(/\bpostal(?: code)?\s+((?:zero|oh|one|two|three|four|five|six|seven|eight|nine|niner)(?:[ -]+(?:zero|oh|one|two|three|four|five|six|seven|eight|nine|niner)){1,7})\b/ig,(_,n)=>'postal '+wordsNumber(n,{digits:true}));
  return s.length>=2&&s.length<=100&&/^[\p{L}0-9 '\u2019.,-]+$/u.test(s)?s:null;
 }
 const reply = text => ({action:'reply',reply:clean(text).slice(0,450),steps:[],confirmation:false});
@@ -118,7 +118,7 @@ function validateStep(value){
  if(v.action==='set_status'?!STATUS.includes(v.status):v.status!==null)fail('Invalid status field');
  if(CALL_TOOLS.has(v.action)){if(v.id!==null&&(typeof v.id!=='string'||!/^[1-9]\d{0,17}$/.test(v.id)))fail('Invalid call ID');if(REQUIRED_CALL_TOOLS.has(v.action)&&v.id===null)fail('Explicit call ID required');}else if(v.id!==null)fail('Unexpected call ID');
  if(QUERY_TOOLS.has(v.action)){
-  const max=['add_note','caller_contact','dispatch_update','caller_update','create_call'].includes(v.action)?800:v.action==='unit_update'?500:100;
+  const max=['add_note','caller_contact','dispatch_update','caller_update','create_call'].includes(v.action)?800:v.action==='unit_update'?500:v.action==='patrol_activity'?140:100;
   if(typeof v.query!=='string'||v.query!==clean(v.query)||v.query.length<2||v.query.length>max||!/^[\p{L}0-9 '\u2019.,:;!?/#()&|_-]+$/u.test(v.query))fail('Invalid query');
   if(v.action==='run_plate'&&!/^[A-Z0-9-]{2,12}$/.test(v.query))fail('Invalid exact plate');
   if(v.action==='run_vin'&&!/^[A-Z0-9-]{3,30}$/.test(v.query))fail('Invalid VIN query');
@@ -131,6 +131,7 @@ function validateStep(value){
   if(v.action==='broadcast_call'&&!/^(?:any available|supervisors|attached); (?:normal|emergency); notes (?:on|off)$/.test(v.query))fail('Invalid broadcast plan');
   if(v.action==='broadcast_call'&&/; emergency;/.test(v.query)&&!v.query.startsWith('any available;'))fail('Emergency broadcast must use any available audience');
   if(v.action==='create_call'){const parts=v.query.split(' | ');if(parts.length!==6||parts[0].length<2||parts[0].length>80||! /^[1-4]$/.test(parts[1])||parts[2].length<1||parts[2].length>16||parts[3].length<2||parts[3].length>80||parts[4].length<3||parts[4].length>160||parts[5].length<100||parts[5].split(/\s+/).length<18)fail('Invalid dispatcher-created call details');}
+  if(v.action==='patrol_activity'&&!/^(?:start (?:building|perimeter); [\p{L}0-9 '\u2019.,/-]{2,100}|(?:complete|cancel) (?:building|perimeter)(?:; [\p{L}0-9 '\u2019.,/-]{2,100})?)$/u.test(v.query))fail('Invalid patrol activity');
   if(v.action==='unit_update'&&v.query.length<3)fail('Unit update needs at least 3 characters');
  }else if(RESOURCE_TOOLS.has(v.action)){
   if(v.query!==null&&!/^Code [1-4]$/.test(v.query))fail('Invalid response code');
@@ -180,6 +181,7 @@ function canonicalCommand(v){
  if(s.action==='broadcast_call')return 'broadcast call '+s.id+' '+s.query;
  if(s.action==='create_call')return 'create call '+s.query;
  if(s.action==='unit_update')return 'unit update call '+s.id+' '+s.query;
+ if(s.action==='patrol_activity')return 'patrol activity '+s.query;
  if(s.action==='go_off_duty')return 'go off duty';
  if(s.action==='clear_duress')return 'clear duress';
  if(s.action==='officer_down')return 'officer down';
@@ -218,6 +220,9 @@ function createLanguage(book){
   if(responseRead){const explicit=responseRead[1]||responseRead[2],found=explicit?{id:explicit}:ownCall(context);return found.id?plan([step('response_plan',{id:found.id})]):clarify(found.question);}
   if(hypothetical(s))return null;
   if(reported(s)||/["\u201c\u201d]/.test(s))return reply('That is a question or report, not an instruction to change CAD. Tell me the action you want for your own unit.');
+  const activityText=original.replace(/(?: right now| now| at this time)[.!?]*$/i,'').replace(/[.!?]+$/,'');
+  const activity=/^(?:(?:show|mark|put|log) (?:me|my|my unit)(?: as)? )?(?:i(?:'m| am) )?(starting|start|beginning|begin|conducting|doing|completing|complete|finished|finishing|finish|ending|end|canceling|cancelling|cancel)(?: my)? (?:a )?(building|perimeter) (?:checks?|inspections?)(?: (?:in|at|on|around) (.{2,100}))?$/i.exec(activityText);
+  if(activity){const mode=/^(?:starting|start|beginning|begin|conducting|doing)$/i.test(activity[1])?'start':/^cancel/i.test(activity[1])?'cancel':'complete',kind=activity[2].toLowerCase(),place=activity[3]?clean(activity[3]):null;if(mode==='start'&&!place)return clarify('What area, road or subregion are you checking?');const query=mode+' '+kind+(place?'; '+place:'');try{return plan([validateStep(step('patrol_activity',{query}))]);}catch{return clarify('Give one short area or road name for your own checks.');}}
   const reportCodes=new Set(['10-5','10-10','10-11','10-12','10-13','10-14','10-15','10-16','10-17','10-24','10-25','10-26','10-30','10-37','10-38','10-39','10-40','10-43','10-46','10-47','10-48','10-49','10-50','10-55','10-56','10-57','10-58','10-60','10-61','10-62','10-63','10-64','10-65','10-66','10-67','10-68','10-70','10-80']);
   const reportCode=/^(10-(?:5|10|11|12|13|14|15|16|17|24|25|26|30|37|38|39|40|43|46|47|48|49|50|55|56|57|58|60|61|62|63|64|65|66|67|68|70|80))(?:[,:; -]+(.{2,420}))?$/.exec(s);
   if(reportCode&&reportCodes.has(reportCode[1])){const found=ownCall(context);if(!found.id)return clarify(found.question);const meaning=index.get(reportCode[1])?.meaning||reportCode[1],detail=reportCode[2]?clean(reportCode[2]):'';if(['10-5','10-43'].includes(reportCode[1])&&!detail)return clarify('What information should I relay to the units attached to your call?');if(reportCode[1]==='10-26'&&!detail)return clarify('What ETA should I relay to the units attached to your call?');return plan([step('unit_update',{id:found.id,query:(meaning+(detail?'. '+detail:'')).slice(0,500)})]);}
@@ -334,8 +339,10 @@ function createLanguage(book){
   if(record){const q=plateQuery(record[1]);return q?plan([step('run_plate',{query:q})]):clarify('Please repeat the exact plate, using letters or phonetic spelling and digits.');}
   const name=/^(?:run|check|look up|lookup|verify)(?: (?:the|a))? (?:name|person|driver)(?: (?:for|on|of))? (.+)$/i.exec(original)||/^(?:10[- ](?:27|29)|ten (?:twenty[- ](?:seven|nine)))(?:\s+(?:on|name))?\s+(.+)$/i.exec(original);
   if(name){const q=clean(name[1]);return q.length>=2&&q.length<=100&&/^[\p{L}0-9 '\u2019.,-]+$/u.test(q)?plan([step('run_name',{query:q})]):clarify('Please give the exact civilian name to check.');}
-  const loc=/^(?:(?:set|update|change|mark) my (?:location|position)(?: to| as)?|my (?:location|position|10[- ]20|ten twenty) is|i(?:'m| am) (?:located )?(?:at|on))\s+(.+)$/i.exec(original);
-  if(loc){const q=locationQuery(loc[1]);return q?plan([step('set_location',{query:q})]):clarify('Give a road name and, when known, its recorded postal.');}
+  const loc=/^(?:(?:set|update|change|mark) my (?:location|position|postal(?: code)?|10[- ]20)(?: to| as)?|my (?:location|position|postal(?: code)?|10[- ]20|ten twenty) is|i(?:'m| am) (?:located )?(?:at|on)|show me (?:at|on))\s+(.+)$/i.exec(original)||/^(?:10[- ]20|ten twenty)(?: (?:at|on|is))?\s+(.+)$/i.exec(original);
+  if(/^(?:set|update|change) my (?:location|position|postal(?: code)?)$/i.test(original.replace(/[?!.]+$/,'')))return clarify('What road or recorded postal should I use?');
+  if(loc){const isPostal=/\bpostal(?: code)?\b/i.test(original.split(loc[1])[0]);let value=loc[1].replace(/[?!.]+$/,'');if(isPostal&&!/\bpostal\b/i.test(value)){const number=wordsNumber(value);if(number!==null)value='postal '+number;}const q=locationQuery(value);return q?plan([step('set_location',{query:q})]):clarify('Give a road name or a recorded postal.');}
+
   let action=null,callText=s;
   if(/^(?:attach|assign)(?: me| my unit)?\b|^add (?:me|my unit)\b|^put me on\b|^send me to\b/.test(s))action='attach';
   else if(/^(?:detach|remove|clear) (?:me|my unit)(?:\s+only)?\s+(?:from|off)\b|^take me off\b/.test(s))action='detach';
@@ -348,6 +355,14 @@ function createLanguage(book){
    const found=resolveCall(callText,context,{assigned:['close_call','trace','trace_advance','detach'].includes(action)});
    return found.id?plan([step(action,{id:found.id})],action==='close_call'):clarify(found.question);
   }
+  const knownCode=/^(10-\d{1,2})(?:[ ,:;-]+(.+))?$/.exec(s);
+  if(knownCode&&index.has(knownCode[1])){
+   const entry=index.get(knownCode[1]);
+   if(/reserved|retired/i.test(entry.meaning)||['10-41','10-42','10-90','10-93'].includes(knownCode[1]))return reply(codeReply(knownCode[1])+' No CAD action was taken.');
+   if(['10-27','10-28','10-29','10-54'].includes(knownCode[1]))return clarify(codeReply(knownCode[1])+' Give the exact name, plate or document to check.');
+   const found=ownCall(context);if(!found.id)return clarify(codeReply(knownCode[1])+' '+found.question);
+   return plan([step('unit_update',{id:found.id,query:(entry.meaning+(knownCode[2]?'. '+clean(knownCode[2]):'')).slice(0,500)})]);
+  }
   // Definitions are usable for all 196 entries; reserved/duty/unsupported operations never become arbitrary writes.
   if(index.has(s)||/^signal (41|42)$/.test(s))return reply(codeReply(s)+' No CAD action was taken.');
   return null;
@@ -355,7 +370,14 @@ function createLanguage(book){
  function local(text,context={}){
   const s=clean(text);if(!s||s.length>700)fail('Transcript must contain 1 to 700 characters');
   const emergency=emergencyAction(s);if(emergency)return plan([step(emergency)]);
-  const body=s.replace(/^(?:hey |okay |ok )?(?:dispatch|central)[\s,:;.!-]+/i,'');
+  let body=s.replace(/^(?:hey |okay |ok )?(?:dispatch|central)[\s,:;.!-]+/i,'').replace(/[?!.]+$/,'');
+  // A speaker may identify their own unit before the request without naming a different actor.
+  const own=clean(context.unit?.callsign).replace(/[^a-z0-9]/gi,'').toLowerCase();
+  const spoken=/^(?:unit )?([a-z]{1,5})[- ]?(\d{1,4})[ ,:;-]+(.+)$/i.exec(body);
+  if(spoken&&own&&((spoken[1]+spoken[2]).toLowerCase()===own))body=spoken[3];
+  const operational=/^(?:(?:show|mark|put|log) (?:me|my unit)(?: (?:as|on|at))?(?: an?)?|i(?:'m| am)(?: on)?(?: an?)?)\s+(10[- .]\d{1,2}|ten[ -]+(?:[a-z -]+?))(?=$|[,;]|\s+(?:at|on|postal|near)\b)(.*)$/i.exec(body);
+  if(operational)body=operational[1]+operational[2];
+  const normalizedEmergency=emergencyAction(body);if(normalizedEmergency)return plan([step(normalizedEmergency)]);
   const definition=reference(body);if(definition)return definition;
   if(/^(?:(?:dispatch|broadcast|rebroadcast|send) )?(?:call|incident) [1-9]\d{0,17}.*caller notes$/i.test(body))return one(body,context);
   const clauses=body.split(/\s*(?:;|\band then\b|\bthen\b|,(?=\s*(?:mark me|show me|set my|put me|attach me|assign me|detach me|remove me|read (?:the|my)|give me|tell me|run (?:name|plate)|check (?:name|plate)|update my|close (?:call|the call|my call)|resolve (?:call|the call|my call)|trace (?:the|my)|(?:request|send|need) (?:backup|supervisor|emergency traffic|secondary channel|ems|fire|tow|coroner|traffic|scene|transport|investigator)|add (?:a )?note|contact (?:the )?caller|10-|ten\s))|\band(?=\s+(?:please\s+)?(?:mark|show|set|put|attach|assign|detach|remove|read|give|tell|run|check|update|close|resolve|trace|request|send|need|add|contact|10-|ten\s)))\s*/i).map(s=>s.replace(/^[, ]+|[, ]+$/g,'').trim()).filter(Boolean);
@@ -419,11 +441,12 @@ function semanticActionMatch(action,source,status=null){
   for(const s of p.steps){
    if(['duress','officer_down'].includes(s.action)&&!emergencySignal(text))return clarify('Please state an explicit own-unit emergency request.');
    if(!semanticActionMatch(s.action,source,s.status))fail('Model action does not match the spoken request');
+   if(s.action==='patrol_activity'&&!local(text,context)?.steps?.some(x=>x.action==='patrol_activity'&&x.query===s.query))fail('Patrol activity needs an explicit grounded request');
    if(s.id&&!activeCalls(context).some(c=>String(c.id)===s.id)&&callId(text)!==s.id)fail('Model invented a call ID');
    if(s.query){
     const original=clean(text).toLowerCase(),query=s.query.toLowerCase();
     const normalizedOriginal=normalizeCodes(original);
-    const visible=original.includes(query)||normalizedOriginal.includes(query)||
+    const visible=(s.action==='patrol_activity'&&local(text,context)?.steps?.some(x=>x.action==='patrol_activity'&&x.query===s.query))||original.includes(query)||normalizedOriginal.includes(query)||
      (s.action==='run_plate'&&original.split(/\b(?:plate|tag|10-28|ten twenty eight|ten twenty-eight)\b/i).some(x=>plateQuery(x.trim())===s.query))||
      (s.action==='run_vin'&&original.replace(/[^a-z0-9]/g,'').includes(query.replace(/[^a-z0-9]/g,'')))||
      (s.action==='run_dl'&&original.replace(/[^a-z0-9]/g,'').includes(query.replace(/[^a-z0-9]/g,'')))||
