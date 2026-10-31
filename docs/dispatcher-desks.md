@@ -1,0 +1,7 @@
+# Shared dispatcher desks — worker 0.9.1
+
+Spoken AI replies and authorized repeats acquire a server-owned dispatcher desk before synthesis and retain it until playback finishes. Each TTS segment carries that lease, so the CAD server selects the desk voice rather than trusting the worker voice override. A captured nonce permits best-effort release after a lost claim response; cleanup uses a separate five-second timeout. Busy desks wait with a bounded retry; authorization failures never run playback. The existing per-bot/per-channel playback queue still serializes the actual Discord audio mix.
+
+The shared database provides three desks per community rotating every eight hours through Eric, Bella, Alice, River, Sarah, Roger, Rhett and Lauren. Browser and Discord identities resolve to the same linked CAD actor. A current actor cannot occupy two desks via different devices. Conversation preference lasts five minutes and renews each turn; abandoned active leases expire after two minutes. No bot credential, role or permission changes are needed.
+
+Deploy only after CAD release 44713, bot bridge 4.8.4 and the dispatcher_desks migration / worker gateway operation are verified. Rollback worker to cfd224c114453331eab4eaed5b834a4cc3423647 (0.9.0) if needed; the additive desk schema remains compatible with that worker. Physical voice acceptance is separate from synthetic tests. Primary/side net controls and new-call broadcast priority are subsequent work.

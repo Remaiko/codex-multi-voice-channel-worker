@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {createSessionSpeech} from './session-speech.js';
+const scope={guildId:'111111111111111111',channelId:'222222222222222222',userId:'333333333333333333'},lease='40000000-0000-4000-8000-000000000001';
+test('Discord keeps a dispatcher until playback completes, forwards its lease and releases after failure',async()=>{
+ const calls=[];const speech=createSessionSpeech({controlUrl:'https://fixture.invalid/voice',workerKey:'synthetic',fetchImpl:async(_,init)=>{const body=JSON.parse(init.body);calls.push(body);if(body.session_action==='desk')return Response.json(body.mode==='claim'?{ready:true,voice_id:'approved',lease_id:body.lease_id}:{released:true});return new Response(new Uint8Array(120));}});
+ await assert.rejects(speech.withDesk(scope,async desk=>{assert.match(desk.lease_id,/^[0-9a-f-]{36}$/i);await speech.speak('Radio check','approved',scope,desk.lease_id);assert.equal(calls.some(c=>c.mode==='release'),false);throw Error('Synthetic playback failure');}),/Synthetic playback failure/);
+ assert.equal(calls.find(c=>c.session_action==='speak').lease_id,calls[0].lease_id);assert.equal(calls.at(-1).mode,'release');assert.equal(calls.at(-1).lease_id,calls[0].lease_id);
+});
+test('busy desks wait without generating speech or running a task twice',async()=>{let claims=0,waits=0,runs=0;const speech=createSessionSpeech({controlUrl:'https://fixture.invalid/voice',workerKey:'synthetic',wait:async()=>waits++,fetchImpl:async(_,init)=>{const b=JSON.parse(init.body);return Response.json(b.mode==='release'?{released:true}:++claims<3?{ready:false,retry_after:2}:{ready:true,voice_id:'approved',lease_id:b.lease_id});}});await speech.withDesk(scope,async()=>runs++);assert.equal(claims,3);assert.equal(waits,2);assert.equal(runs,1);});
+test('a denied desk cannot synthesize or play a reply',async()=>{let ran=false;const speech=createSessionSpeech({controlUrl:'https://fixture.invalid/voice',workerKey:'synthetic',fetchImpl:async()=>new Response('',{status:403})});await assert.rejects(speech.withDesk(scope,()=>ran=true),/403/);assert.equal(ran,false);});
