@@ -27,6 +27,7 @@ import {flattenVoiceRoutes,voiceRouteKey} from './voice-routes.js';
 import {recognitionConfig,transcribeAudio} from './speech-recognition.js';
 import {playToAudience} from './authorized-playback.js';
 import {createGuildQueue,idleRoutes} from './guild-queue.js';
+import {createRadioScheduler} from './radio-scheduler.js';
 import {botCredentials,selectVoiceBot,companionConfiguration} from './bot-pool.js';
 import {synthesizeElevenLabs} from './elevenlabs.js';
 import {fleetInput,fleetReport,reconnectFleetBot} from './fleet-control.js';
@@ -51,6 +52,7 @@ const bots=botCredentials(token,companionConfiguration(process.env)).map(spec=>(
 const client=bots[0].client;
 const connections=new Map();
 const inGuild=createGuildQueue();
+const scheduleRadio=createRadioScheduler();
 const recent=new Map();
 const recentReplies=new Map();
 const lastAnnouncements=new Map();
@@ -83,7 +85,7 @@ async function voiceFor(guildId,channelId){
  if(!state){for(const [otherKey,other] of connections){if(other.guildId===guildId&&other.botKey===bot.key&&other.channelId!==channelId){connections.delete(otherKey);other.connection.destroy();}}const player=createAudioPlayer({behaviors:{noSubscriber:NoSubscriberBehavior.Stop}});const connection=joinVoiceChannel({guildId,channelId,group:bot.key,adapterCreator:guild.voiceAdapterCreator,selfDeaf:!inputEnabled,selfMute:false});connection.subscribe(player);state={connection,player,channelId,guildId,botKey:bot.key,gateway:bot.client,tail:Promise.resolve()};connections.set(key,state);if(inputEnabled)setupReceiver(guildId,state);connection.on('error',error=>{console.error('Discord voice connection error',key,String(error?.message||error).slice(0,160));if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});connection.on(VoiceConnectionStatus.Disconnected,()=>{if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});}
  return ensureConnectionReady({connections,key,state,readyStatus:VoiceConnectionStatus.Ready,wait:()=>entersState(state.connection,VoiceConnectionStatus.Ready,15_000)});
 }
-function play(req,{priority=0}={}){const scope=queueKey(req.guildId,req.voiceChannelId);return inGuild(scope,()=>{if(queueKey(req.guildId,req.voiceChannelId)!==scope)throw Error('Voice route changed; retry delivery.');return playDelivery(req);},{priority});}
+function play(req,{priority=0}={}){const scope=queueKey(req.guildId,req.voiceChannelId);return scheduleRadio(String(req.guildId),scope,()=>inGuild(scope,()=>{if(queueKey(req.guildId,req.voiceChannelId)!==scope)throw Error('Voice route changed; retry delivery.');return playDelivery(req);},{priority}),{kind:priority>0?'announcement':'routine',event:priority>0?String(req.eventId):null});}
 async function playDelivery(req){
  const {guildId,agencyCode,eventId,voiceChannelId,audioBase64,authorizedUserIds}=req;
  if(!/^\d{15,22}$/.test(guildId||'')||!dispatchEventId(eventId))throw Error('Invalid dispatch identifiers.');
