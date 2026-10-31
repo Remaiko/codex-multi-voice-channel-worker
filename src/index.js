@@ -85,8 +85,9 @@ async function voiceFor(guildId,channelId){
  if(!state){for(const [otherKey,other] of connections){if(other.guildId===guildId&&other.botKey===bot.key&&other.channelId!==channelId){connections.delete(otherKey);other.connection.destroy();}}const player=createAudioPlayer({behaviors:{noSubscriber:NoSubscriberBehavior.Stop}});const connection=joinVoiceChannel({guildId,channelId,group:bot.key,adapterCreator:guild.voiceAdapterCreator,selfDeaf:!inputEnabled,selfMute:false});connection.subscribe(player);state={connection,player,channelId,guildId,botKey:bot.key,gateway:bot.client,tail:Promise.resolve()};connections.set(key,state);if(inputEnabled)setupReceiver(guildId,state);connection.on('error',error=>{console.error('Discord voice connection error',key,String(error?.message||error).slice(0,160));if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});connection.on(VoiceConnectionStatus.Disconnected,()=>{if(connections.get(key)===state){connections.delete(key);try{connection.destroy()}catch{}}});}
  return ensureConnectionReady({connections,key,state,readyStatus:VoiceConnectionStatus.Ready,wait:()=>entersState(state.connection,VoiceConnectionStatus.Ready,15_000)});
 }
-function play(req,{priority=0}={}){const scope=queueKey(req.guildId,req.voiceChannelId);return scheduleRadio(String(req.guildId),scope,()=>inGuild(scope,()=>{if(queueKey(req.guildId,req.voiceChannelId)!==scope)throw Error('Voice route changed; retry delivery.');return playDelivery(req);},{priority}),{kind:priority>0?'announcement':'routine',event:priority>0?String(req.eventId):null});}
+function play(req,{priority=0}={}){if(req.signal?.aborted)return Promise.reject(req.signal.reason||Error('Dispatcher playback cancelled.'));const scope=queueKey(req.guildId,req.voiceChannelId);return scheduleRadio(String(req.guildId),scope,()=>inGuild(scope,()=>{if(queueKey(req.guildId,req.voiceChannelId)!==scope)throw Error('Voice route changed; retry delivery.');return playDelivery(req);},{priority}),{kind:priority>0?'announcement':'routine',event:priority>0?String(req.eventId):null,signal:req.signal});}
 async function playDelivery(req){
+ if(req.signal?.aborted)throw req.signal.reason||Error('Dispatcher playback cancelled.');
  const {guildId,agencyCode,eventId,voiceChannelId,audioBase64,authorizedUserIds}=req;
  if(!/^\d{15,22}$/.test(guildId||'')||!dispatchEventId(eventId))throw Error('Invalid dispatch identifiers.');
  if(!/^[A-Z0-9_-]{1,20}$/.test(agencyCode||''))throw Error('Invalid agency code.');
@@ -108,7 +109,8 @@ async function playDelivery(req){
    if(!Array.isArray(current)||!current.length||current.length>100||current.some(id=>typeof id!=='string'||!/^\d{15,22}$/.test(id)))throw Error('Voice authorization changed while waiting for playback.');
    authorized.clear();for(const id of current)authorized.add(id);
   }
-  return playToAudience({player:state.player,gateway:state.gateway,channel:voiceChannel,resource:createAudioResource(Readable.from(audio),{inputType:req.audioFormat==='pcm'?StreamType.Raw:StreamType.Arbitrary}),guildId,channelId:voiceChannelId,authorized,idleEvent:AudioPlayerStatus.Idle});
+  if(req.signal?.aborted)throw req.signal.reason||Error('Dispatcher playback cancelled.');
+  return playToAudience({signal:req.signal,player:state.player,gateway:state.gateway,channel:voiceChannel,resource:createAudioResource(Readable.from(audio),{inputType:req.audioFormat==='pcm'?StreamType.Raw:StreamType.Arbitrary}),guildId,channelId:voiceChannelId,authorized,idleEvent:AudioPlayerStatus.Idle});
  });
  await state.tail;recent.set(key,Date.now());for(const [k,t] of recent)if(Date.now()-t>15*60_000)recent.delete(k);
  return {played:true,guildId,agencyCode};
@@ -172,9 +174,9 @@ async function replyInGuild(guildId,channelId,userId,message,expectedScopeTag=nu
 
  return sessionSpeech.withDesk(replyScope,async desk=>{
  const voice=desk.voice_id;
- const synthesisStart=Date.now();const audio=await prepareRadioSpeech(replyText,{decode:decodePcm,speak:segment=>sessionSpeech.speak(segment,voice,{guildId,channelId,userId},desk.lease_id)});
+ const synthesisStart=Date.now();const audio=await prepareRadioSpeech(replyText,{decode:decodePcm,speak:segment=>sessionSpeech.speak(segment,voice,{guildId,channelId,userId},desk.lease_id,desk.signal)});
  console.log(JSON.stringify({voiceReplyTiming:{synthesisMs:Date.now()-synthesisStart}}));
- await play({guildId,agencyCode:r.agency_code,eventId:String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),voiceChannelId:r.voice_channel_id,authorizedUserIds:permitted,audioFormat:'pcm',audioBase64:audio.toString('base64'),authorizeForPlayback:async()=>{await verifyReplyScope();const latest=routes.get(voiceRouteKey(guildId,channelId));if(!canListen(voicePolicy(latest,guildId),userId))throw Error('VOICE_SCOPE_REVOKED');const current=new Set((latest?.authorized_listener_ids||[]).map(String));const intersection=permitted.filter(id=>current.has(id));if(!intersection.includes(String(userId)))throw Error('VOICE_SCOPE_REVOKED');return intersection;}});
+ await play({guildId,agencyCode:r.agency_code,eventId:String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),voiceChannelId:r.voice_channel_id,authorizedUserIds:permitted,audioFormat:'pcm',audioBase64:audio.toString('base64'),signal:desk.signal,authorizeForPlayback:async()=>{await desk.assertCurrent();await verifyReplyScope();const latest=routes.get(voiceRouteKey(guildId,channelId));if(!canListen(voicePolicy(latest,guildId),userId))throw Error('VOICE_SCOPE_REVOKED');const current=new Set((latest?.authorized_listener_ids||[]).map(String));const intersection=permitted.filter(id=>current.has(id));if(!intersection.includes(String(userId)))throw Error('VOICE_SCOPE_REVOKED');return intersection;}});
  });
 }
 // A repeat is a fresh authorization, not a replay to everybody currently on the route.
@@ -190,10 +192,10 @@ async function repeatLastDispatch(guildId,channelId,userId){
     return [...(channel?.members?.values()||[])].filter(member=>!member.user.bot).map(member=>String(member.id));
    },
    synthesize:(text,voice)=>prepareRadioSpeech(text,{decode:decodePcm,
-    speak:segment=>sessionSpeech.speak(segment,desk.voice_id,{guildId,channelId,userId},desk.lease_id)}),
+    speak:segment=>sessionSpeech.speak(segment,desk.voice_id,{guildId,channelId,userId},desk.lease_id,desk.signal)}),
    isVoiceApproved:voice=>selectedDispatchVoice(voice)===voice,
    playbackId:()=>String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),
-   play
+   play:args=>play({...args,signal:desk.signal,authorizeForPlayback:async()=>{await desk.assertCurrent();return args.authorizeForPlayback();}})
   }));
   if(result.played)return;
  }catch(error){console.warn('Dispatch repeat unavailable; fresh authority or audio could not be confirmed.');}

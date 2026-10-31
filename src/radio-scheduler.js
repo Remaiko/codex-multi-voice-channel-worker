@@ -8,9 +8,9 @@ export function createRadioScheduler({maxPending=128,pendingTimeoutMs=45000,setT
  const servers=new Map();
  function pump(key,state){
   function start(job){
-   clearTimer(job.timer);state.waiting.splice(state.waiting.indexOf(job),1);state.active.set(job.route,job);
+   clearTimer(job.timer);job.signal?.removeEventListener('abort',job.abort);state.waiting.splice(state.waiting.indexOf(job),1);state.active.set(job.route,job);
    const finish=()=>{state.active.delete(job.route);pump(key,state);};
-   Promise.resolve().then(job.task).then(value=>{job.resolve(value);finish();},error=>{job.reject(error);finish();});
+   Promise.resolve().then(()=>{if(job.signal?.aborted)throw job.signal.reason||Error('Radio transmission cancelled.');return job.task();}).then(value=>{job.resolve(value);finish();},error=>{job.reject(error);finish();});
   }
   if(state.group!==null){
    for(const job of [...state.waiting])if(job.kind==='announcement'&&job.event===state.group&&!state.active.has(job.route))start(job);
@@ -25,14 +25,18 @@ export function createRadioScheduler({maxPending=128,pendingTimeoutMs=45000,setT
   for(const job of [...state.waiting])if(!state.active.has(job.route))start(job);
   if(!state.active.size&&!state.waiting.length&&servers.get(key)===state)servers.delete(key);
  }
- return function schedule(guildId,routeId,task,{kind='routine',event=null}={}){
+ return function schedule(guildId,routeId,task,{kind='routine',event=null,signal}={}){
   if(typeof task!=='function'||!['routine','announcement'].includes(kind)||typeof guildId!=='string'||!guildId||guildId.length>100||typeof routeId!=='string'||!routeId||routeId.length>200||(kind==='announcement'&&(typeof event!=='string'||!event||event.length>100)))return Promise.reject(Error('Invalid radio scheduling request.'));
+  if(signal?.aborted)return Promise.reject(signal.reason||Error('Radio transmission cancelled.'));
   let state=servers.get(guildId);
   if(!state){state={active:new Map(),waiting:[],group:null};servers.set(guildId,state);}
   if(state.waiting.length>=maxPending)return Promise.reject(Error('Radio traffic is busy. Retry shortly.'));
   const promise=new Promise((resolve,reject)=>{
-   const job={route:routeId,task,kind,event,resolve,reject};state.waiting.push(job);
-   job.timer=setTimer(()=>{const at=state.waiting.indexOf(job);if(at<0)return;state.waiting.splice(at,1);reject(Error('Radio traffic wait expired. Retry shortly.'));pump(guildId,state);},pendingTimeoutMs);
+   const job={route:routeId,task,kind,event,resolve,reject,signal};state.waiting.push(job);
+   const remove=error=>{const at=state.waiting.indexOf(job);if(at<0)return;state.waiting.splice(at,1);clearTimer(job.timer);signal?.removeEventListener('abort',job.abort);reject(error);pump(guildId,state);};
+   job.abort=()=>remove(signal.reason||Error('Radio transmission cancelled.'));
+   signal?.addEventListener('abort',job.abort,{once:true});
+   job.timer=setTimer(()=>remove(Error('Radio traffic wait expired. Retry shortly.')),pendingTimeoutMs);
    job.timer?.unref?.();
   });
   pump(guildId,state);return promise;
