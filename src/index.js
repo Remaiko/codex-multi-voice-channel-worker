@@ -168,15 +168,17 @@ async function replyInGuild(guildId,channelId,userId,message,expectedScopeTag=nu
  const verifyReplyScope=async()=>{const current=await sessionSpeech.scope(replyScope);if(current?.allowed!==true||!/^[a-f0-9]{64}$/.test(current.scope_tag||''))throw Error('VOICE_SCOPE_REVOKED');if(replyTag&&replyTag!==current.scope_tag)throw Error('VOICE_IDENTITY_CHANGED');replyTag=current.scope_tag;};
  await verifyReplyScope();
 
- const voice=lastVoiceChoice.get(guildId)||selectedDispatchVoice(process.env.ELEVENLABS_VOICE_ID,'D4xQvkd2SmpDZJ8sEwvA');
- const synthesisStart=Date.now();const audio=await prepareRadioSpeech(replyText,{decode:decodePcm,speak:segment=>sessionSpeech.speak(segment,voice,{guildId,channelId,userId})});
+ return sessionSpeech.withDesk(replyScope,async desk=>{
+ const voice=desk.voice_id;
+ const synthesisStart=Date.now();const audio=await prepareRadioSpeech(replyText,{decode:decodePcm,speak:segment=>sessionSpeech.speak(segment,voice,{guildId,channelId,userId},desk.lease_id)});
  console.log(JSON.stringify({voiceReplyTiming:{synthesisMs:Date.now()-synthesisStart}}));
  await play({guildId,agencyCode:r.agency_code,eventId:String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),voiceChannelId:r.voice_channel_id,authorizedUserIds:permitted,audioFormat:'pcm',audioBase64:audio.toString('base64'),authorizeForPlayback:async()=>{await verifyReplyScope();const latest=routes.get(voiceRouteKey(guildId,channelId));if(!canListen(voicePolicy(latest,guildId),userId))throw Error('VOICE_SCOPE_REVOKED');const current=new Set((latest?.authorized_listener_ids||[]).map(String));const intersection=permitted.filter(id=>current.has(id));if(!intersection.includes(String(userId)))throw Error('VOICE_SCOPE_REVOKED');return intersection;}});
+ });
 }
 // A repeat is a fresh authorization, not a replay to everybody currently on the route.
 async function repeatLastDispatch(guildId,channelId,userId){
  try{
-  const result=await repeatTransmission({
+  const result=await sessionSpeech.withDesk({guildId,channelId,userId},desk=>repeatTransmission({
    entry:lastAnnouncements.get(voiceRouteKey(guildId,channelId)),guildId,channelId,userId,
    validate:id=>control('repeat_validate',{id}),
    audience:async()=>{
@@ -186,11 +188,11 @@ async function repeatLastDispatch(guildId,channelId,userId){
     return [...(channel?.members?.values()||[])].filter(member=>!member.user.bot).map(member=>String(member.id));
    },
    synthesize:(text,voice)=>prepareRadioSpeech(text,{decode:decodePcm,
-    speak:segment=>sessionSpeech.speak(segment,voice,{guildId,channelId,userId})}),
+    speak:segment=>sessionSpeech.speak(segment,desk.voice_id,{guildId,channelId,userId},desk.lease_id)}),
    isVoiceApproved:voice=>selectedDispatchVoice(voice)===voice,
    playbackId:()=>String(BigInt(Date.now())*1000000n+BigInt(Math.floor(Math.random()*1000000))),
    play
-  });
+  }));
   if(result.played)return;
  }catch(error){console.warn('Dispatch repeat unavailable; fresh authority or audio could not be confirmed.');}
  // This generic response contains no cached incident data. Existing input/room checks remain.
