@@ -1,5 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync}from'node:fs';
 import {createRadioNetGuard,routeNet,primaryNet}from'../src/radio-nets.js';
+import {groupCallouts}from'../src/callout-reservations.js';
 import {createRadioScheduler}from'../src/radio-scheduler.js';import {createGuildQueue}from'../src/guild-queue.js';
 const source=readFileSync(new URL('../src/index.js',import.meta.url),'utf8'),g='guild',c='channel';
 const tick=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
@@ -16,9 +17,9 @@ test('production automatic playback stops on retuning while interactive replies 
 });
 test('production delivery poll discards known side-net events but retries unknown routes without synthesis',async()=>{
  const deliveries=[{id:'1',guild_id:g,voice_channel_id:c,agency_code:'BCSO'}],acks=[];let syntheses=0,known=true;
- const context={shuttingDown:false,lastEventPollAt:0,Date,Promise,String,console:{log(){},error(){}},routeNet,primaryNet,voiceRouteKey:(a,b)=>a+':'+b,routes:new Map(),
+ const context={shuttingDown:false,lastEventPollAt:0,Date,Promise,String,groupCallouts,calloutReservations:{withGroup:(_group,task)=>task({})},console:{log(){},error(){}},routeNet,primaryNet,voiceRouteKey:(a,b)=>a+':'+b,routes:new Map(),
  routeFor:()=>{if(!known)throw Error('Unknown route');return{radio_net:'radio:patrol2'};},control:async(action,body)=>action==='claim'?{deliveries}:(acks.push(body),{}),
  selectedDispatchVoice:()=>{syntheses++;throw Error('Unexpected provider work');}};
- vm.createContext(context);const start=source.indexOf('async function deliver(){'),end=source.indexOf('// v43.30',start);vm.runInContext(source.slice(start,end),context);
+ vm.createContext(context);const start=source.indexOf('async function deliverOne('),end=source.indexOf('// v43.30',start);vm.runInContext(source.slice(start,end),context);
  await context.deliver();assert.equal(syntheses,0);assert.equal(acks[0].ok,true);assert.equal(acks[0].error,'side_net_skipped');known=false;await context.deliver();assert.equal(syntheses,0);assert.equal(acks[1].ok,false);assert.match(acks[1].error,/Unknown route/);
 });
