@@ -63,3 +63,10 @@ test('incident-report code executes as an immediate receipt-backed attached-call
 
 test('building checks execute locally without an assigned call or model request',async()=>{const f=fixture();await f.run('Central, starting building checks in Grapeseed');assert.equal(f.calls[0]?.command,'patrol activity start building; Grapeseed');assert.equal(f.models.length,0);assert.match(f.replies[0]?.text,/Confirmed patrol activity/);});
 test('perimeter completion is its own recorded action and missing start area clarifies',async()=>{const f=fixture();await f.run('Dispatch, completing perimeter checks');assert.equal(f.calls[0]?.command,'patrol activity complete perimeter');const g=fixture();g.interpretation(L.clarify('What area, road or subregion are you checking?'));await g.run('Dispatch, starting building checks');assert.equal(g.calls.length,0);assert.match(g.replies[0]?.text,/area, road or subregion/);});
+
+
+test('direct mayday and 10-99 with casualty facts bypass the model and execute one immediate scoped duress',async()=>{
+ for(const text of ['Dispatch G-59 mayday Joshua Road, no officers down','Central, mayday, I was shot at postal 1059','Central, 10-99 postal 1521, unknown wounded, no officers down']){
+  const f=fixture();await f.run(text);assert.equal(f.models.length,0,text);assert.equal(f.calls.length,1,text);assert.equal(f.calls[0].command,'duress',text);assert.equal(f.calls[0].scope_tag,T,text);assert.equal(f.replies.length,1,text);
+ }
+});
