@@ -64,8 +64,22 @@ const plan = (steps,confirmation=false,source='rules') => ({action:'plan',reply:
 const hasOtherTarget = s => /\b(?:mark|show|set|put|attach|assign|detach|clear)\s+(?:him|her|them|their|his|another|all units|unit\s+[a-z0-9-]+)/i.test(s);
 const hypothetical = s => /\b(?:what (?:does|is|would|happens)|what's|how (?:do|can|would|should)|explain|define|meaning of|hypothetically|suppose|if i|practice|training example|quoted|quotation)\b/i.test(s);
 const reported = s => /\b(?:he|she|they|caller|someone|suspect)\s+(?:said|says|reported|asked)|\b(?:yesterday|last week|earlier i was|i was|i used to be)\b/i.test(s);
+ function declaredEmergency(value){
+  let s=value.replace(/^(?:(?:hey|okay|ok) )?(?:dispatch|central)[\s,:;.!-]*/,'').trim();
+  for(let i=0;i<3;i++)s=s.replace(/^(?:please|can you|could you|would you|i need you to|i need to|i need|go ahead and)\s+/,'').trim();
+  const declaration=/^(?:(?:unit )?[a-z]{1,5}[ -]?\d{1,4}[ ,:;-]+)?(?:may[ -]?day|10-99|officer[ -]down|duress)(?=$|[\s,!.:;-])/.exec(s);
+  if(!declaration||/["\u201c\u201d]/.test(s))return false;
+  const tail=s.slice(declaration[0].length).replace(/^[\s,!.:;-]+/,'');
+  // A direct emergency declaration is not negated by incident facts such as
+  // "no officers down", "unknown wounded" or "I was shot" later in the call.
+  // Definition/training statements and cancellation still cannot activate it.
+  if(/^(?:means?|meaning|is|was|would|could|should|does|definition|example|practice|training|hypothetically|false|accidental|cancel|disregard|deactivate|disable|not)\b/.test(tail))return false;
+  if(/\b(?:cancel|disregard|deactivate|disable)(?:\s+(?:my|the|that|this|a))?\s+(?:duress|mayday|emergency|panic|10-99)\b|\b(?:no|not|never)(?:\s+(?:my|a|an|the))?\s+(?:duress|mayday|emergency|panic|10-99)\b/.test(tail))return false;
+  return true;
+ }
 function emergencySignal(value){
  let s=normalizeCodes(value).replace(/^(?:hey |okay |ok )?(?:dispatch|central)[\s,:;.!-]*/,'').trim();
+ if(declaredEmergency(s))return true;
  if(hypothetical(s)||reported(s)||/["\u201c\u201d]/.test(s)||/\b(?:no|not|never|don't|dont|doesn't|do not|cancel|deactivate|disable|false|accidental|explain|meaning|means|mean|supported|support)\b/.test(s))return false;
  for(let i=0;i<3;i++)s=s.replace(/^(?:please|can you|could you|would you|i need you to|i need to|i need|go ahead and)\s+/,'').replace(/\s+(?:for me|right now|now|please|immediately)$/,'').trim();
  if(/^(?:(?:unit )?[a-z]{1,5}[ -]?\d{1,4}[ ,:;-]+)?(?:may[ -]?day|10-99|officer[ -]down|duress)(?:[\s,!.:-].*)?$/.test(s))return true;
@@ -76,7 +90,7 @@ function emergencySignal(value){
 }
 function emergencyAction(value){
  if(!emergencySignal(value))return null;
- const s=normalizeCodes(value);
+ const s=normalizeCodes(value).replace(/\b(?:no|not|no reported|no known) officers?[ -]down\b/g,'');
  return /\bofficer[ -]down\b|\bi(?:'ve| have) been shot\b|\bi am down\b|\bi'm down\b/.test(s)?'officer_down':'duress';
 }
 function referenceIndex(book){
