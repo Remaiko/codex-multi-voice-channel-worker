@@ -6,6 +6,6 @@ A linked, on-duty, speech-enabled responder in the configured VC can say “Cent
 
 Deployment order: worker first (missing net metadata retains primary defaults; unsupported tuning gateway fails without changes), guarded database migration, then bridge/dashboard 4.8.7. Existing configured channels and nets are not changed as a test. No public tones, incidents or player transactions are generated. Human acceptance is deferred.
 
-Validation: 239 worker tests pass, one existing skip. Tests cover all six nets, failed/changed authority, exact receipt matching, real production handler routing, side-net suppression, active/queued cancellation, parent abort and independent guilds. The dashboard/database checks are recorded in the CAD repository.
+Validation: 241 worker tests pass, one existing skip. Tests cover all six nets, failed/changed authority, exact receipt matching, real production handler routing, side-net suppression, active/queued cancellation, parent abort and independent guilds. The dashboard/database checks are recorded in the CAD repository.
 
 Rollback source is merge 5ffb9cf9154e0e1facaabcd801a5d44f25f80329 (worker 0.9.5). Before reverting a net-aware worker, return configured channels to primary nets using authorized controls, or disable voice dispatch; the old worker does not understand side-net metadata.
